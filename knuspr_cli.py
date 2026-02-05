@@ -1382,11 +1382,20 @@ def cmd_order_detail(args: argparse.Namespace) -> int:
             print(f"   📅 Datum: {format_date(date)}")
             print(f"   💰 Gesamt: {format_price(total_price)}")
             
-            # Show delivery info if available
+            # Show price breakdown
             delivery_price = price_comp.get("delivery", {}).get("amount", 0)
             tip = price_comp.get("courierTip", {}).get("amount", 0)
-            if delivery_price > 0 or tip > 0:
-                print(f"   🚚 Lieferung: {format_price(delivery_price)}" + (f" + {format_price(tip)} Trinkgeld" if tip > 0 else ""))
+            credits_used = price_comp.get("creditsUsed", {}).get("amount", 0)
+            goods_price = price_comp.get("goods", {}).get("amount", 0)
+            
+            if goods_price > 0:
+                print(f"   🛍️  Waren: {format_price(goods_price)}")
+            if delivery_price > 0:
+                print(f"   🚚 Lieferung: {format_price(delivery_price)}")
+            if tip > 0:
+                print(f"   💚 Trinkgeld: {format_price(tip)}")
+            if credits_used > 0:
+                print(f"   🎁 Guthaben: -{format_price(credits_used)}")
             print()
             
             products = order.get("items") or order.get("products") or []
