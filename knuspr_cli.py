@@ -269,13 +269,17 @@ class KnusprAPI:
         products = []
         
         for product_id, item in items.items():
+            quantity = item.get("quantity", 0)
+            price = item.get("price", 0)
+            # Calculate total ourselves - API's totalPrice can be unreliable
+            item_total = item.get("totalPrice", 0) or (quantity * price)
             products.append({
                 "id": product_id,
                 "order_field_id": item.get("orderFieldId"),
                 "name": item.get("productName"),
-                "quantity": item.get("quantity", 0),
-                "price": item.get("price", 0),
-                "total_price": item.get("totalPrice", 0),
+                "quantity": quantity,
+                "price": price,
+                "total_price": item_total,
                 "category": item.get("primaryCategoryName"),
                 "brand": item.get("brand"),
                 "image": item.get("image"),
