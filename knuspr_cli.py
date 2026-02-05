@@ -1182,35 +1182,39 @@ def cmd_slots(args: argparse.Namespace) -> int:
             print()
             return 0
         
-        # Parse the nested structure: response is a list with dicts containing "slots"
-        # slots is a dict with hour keys ("21", "22", etc.) containing lists of slot objects
-        all_slots = []
-        for day_data in raw_slots:
-            if isinstance(day_data, dict):
-                slots_by_hour = day_data.get("slots", {})
-                if isinstance(slots_by_hour, dict):
-                    for hour, hour_slots in slots_by_hour.items():
-                        if isinstance(hour_slots, list):
-                            all_slots.extend(hour_slots)
+        # Parse the nested structure: 
+        # .[0].availabilityDays[] -> {date, label, slots: {hour: [slot objects]}}
+        all_days = []
+        for response_item in raw_slots:
+            if isinstance(response_item, dict):
+                availability_days = response_item.get("availabilityDays", [])
+                for day in availability_days:
+                    if isinstance(day, dict):
+                        date = day.get("date", "")
+                        label = day.get("label", "")
+                        slots_by_hour = day.get("slots", {})
+                        day_slots = []
+                        if isinstance(slots_by_hour, dict):
+                            for hour, hour_slots in slots_by_hour.items():
+                                if isinstance(hour_slots, list):
+                                    day_slots.extend(hour_slots)
+                        if day_slots:
+                            all_days.append({"date": date, "label": label, "slots": day_slots})
         
-        if not all_slots:
+        if not all_days:
             print("   ℹ️  Keine Lieferzeitfenster verfügbar.")
             print()
             return 0
         
-        # Group by date and show
-        from collections import defaultdict
-        by_date = defaultdict(list)
-        for slot in all_slots:
-            # Extract date from "since" field (e.g., "2026-02-07 21:00")
-            since = slot.get("since", "")
-            date_part = since.split(" ")[0] if " " in since else since[:10]
-            by_date[date_part].append(slot)
-        
-        displayed = 0
-        for date in sorted(by_date.keys())[:5]:  # Limit to 5 days
-            slots = by_date[date]
-            print(f"   📅 {format_date(date)}")
+        # Show days with their slots
+        for day_info in all_days[:5]:  # Limit to 5 days
+            date = day_info["date"]
+            label = day_info["label"]
+            slots = day_info["slots"]
+            
+            # Format date nicely
+            date_display = label if label else format_date(date)
+            print(f"   📅 {date_display} ({date})")
             print()
             
             # Show only VIRTUAL slots (1-hour windows) to avoid clutter
@@ -1237,9 +1241,8 @@ def cmd_slots(args: argparse.Namespace) -> int:
                 print(f"      🕐 {time_window:12} | 💰 {price_str:10} | {status} {eco}{premium}")
             
             print()
-            displayed += 1
         
-        remaining_days = len(by_date) - 5
+        remaining_days = len(all_days) - 5
         if remaining_days > 0:
             print(f"   ... und {remaining_days} weitere Tage verfügbar")
             print()
