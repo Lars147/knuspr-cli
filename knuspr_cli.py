@@ -5,6 +5,7 @@ Rein Python, keine externen Dependencies (nur stdlib).
 
 Nutzung:
     python3 knuspr_cli.py login                 # Einloggen
+    python3 knuspr_cli.py setup                 # Präferenzen einrichten
     python3 knuspr_cli.py search "Milch"        # Produkte suchen
     python3 knuspr_cli.py cart show             # Warenkorb anzeigen
     python3 knuspr_cli.py cart add 123456       # Produkt hinzufügen
@@ -36,6 +37,7 @@ from typing import Any, Optional
 BASE_URL = "https://www.knuspr.de"
 SESSION_FILE = Path.home() / ".knuspr_session.json"
 CREDENTIALS_FILE = Path.home() / ".knuspr_credentials.json"
+CONFIG_FILE = Path.home() / ".knuspr_config.json"
 
 # Also check workspace secrets
 WORKSPACE_CREDENTIALS = Path(__file__).parent.parent / "secrets" / "knuspr.env"
@@ -524,6 +526,23 @@ def load_credentials() -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+def load_config() -> dict[str, Any]:
+    """Load user configuration or return empty dict."""
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def save_config(config: dict[str, Any]) -> None:
+    """Save user configuration to file."""
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
 def format_price(price: float, currency: str = "€") -> str:
     """Format price for display."""
     if price is None:
@@ -639,6 +658,10 @@ def cmd_search(args: argparse.Namespace) -> int:
             print()
         return 1
     
+    # Load config and show hint if not configured
+    config = load_config()
+    show_setup_hint = not config and not args.json
+    
     try:
         if not args.json:
             print()
@@ -651,23 +674,87 @@ def cmd_search(args: argparse.Namespace) -> int:
             favorites_only=args.favorites
         )
         
+        # Apply config preferences (CLI flags override config)
+        prefer_bio = getattr(args, 'bio', None)
+        if prefer_bio is None:
+            prefer_bio = config.get("prefer_bio", False)
+        
+        exclusions = getattr(args, 'exclude', None)
+        if exclusions is None:
+            exclusions = config.get("exclusions", [])
+        
+        sort_order = getattr(args, 'sort', None)
+        if sort_order is None:
+            sort_order = config.get("default_sort", "relevance")
+        
+        # Filter exclusions
+        if exclusions:
+            original_count = len(results)
+            results = [
+                p for p in results
+                if not any(
+                    excl.lower() in (p.get("name") or "").lower() or
+                    excl.lower() in (p.get("brand") or "").lower()
+                    for excl in exclusions
+                )
+            ]
+            filtered_count = original_count - len(results)
+            if filtered_count > 0 and not args.json:
+                print(f"   ({filtered_count} Produkte durch Ausschlüsse gefiltert)")
+        
+        # Apply sorting
+        if sort_order == "price_asc":
+            results.sort(key=lambda p: p.get("price") or float('inf'))
+        elif sort_order == "price_desc":
+            results.sort(key=lambda p: p.get("price") or 0, reverse=True)
+        # rating and relevance keep original order (API default)
+        
+        # Apply bio preference (boost bio products to top)
+        if prefer_bio:
+            bio_products = []
+            non_bio_products = []
+            for p in results:
+                name = (p.get("name") or "").lower()
+                brand = (p.get("brand") or "").lower()
+                if "bio" in name or "bio" in brand or "organic" in name:
+                    bio_products.append(p)
+                else:
+                    non_bio_products.append(p)
+            results = bio_products + non_bio_products
+        
         if args.json:
             print(json.dumps(results, indent=2, ensure_ascii=False))
         else:
             if not results:
                 print(f"Keine Produkte gefunden für '{args.query}'")
                 print()
+                if show_setup_hint:
+                    print("💡 Tipp: Führe 'knuspr setup' aus um Präferenzen zu setzen")
+                    print()
                 return 0
             
             print(f"Gefunden: {len(results)} Produkte")
+            if prefer_bio:
+                print("   🌿 Bio-Produkte werden bevorzugt")
             print()
             
             for i, p in enumerate(results, 1):
                 stock = "✅" if p["in_stock"] else "❌"
                 brand = f" ({p['brand']})" if p['brand'] else ""
-                print(f"  {i:2}. {p['name']}{brand}")
+                name = p['name']
+                # Mark bio products
+                name_lower = name.lower()
+                brand_lower = (p.get('brand') or '').lower()
+                is_bio = "bio" in name_lower or "bio" in brand_lower or "organic" in name_lower
+                bio_badge = " 🌿" if is_bio and prefer_bio else ""
+                
+                print(f"  {i:2}. {name}{brand}{bio_badge}")
                 print(f"      💰 {p['price']} {p['currency']}  │  📦 {p['amount']}  │  {stock}")
                 print(f"      ID: {p['id']}")
+                print()
+            
+            if show_setup_hint:
+                print("💡 Tipp: Führe 'knuspr setup' aus um Präferenzen zu setzen")
                 print()
         
         return 0
@@ -850,6 +937,145 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_setup(args: argparse.Namespace) -> int:
+    """Handle setup command - interactive onboarding for preferences."""
+    
+    # Handle reset flag
+    if getattr(args, 'reset', False):
+        if CONFIG_FILE.exists():
+            CONFIG_FILE.unlink()
+            print()
+            print("✅ Konfiguration zurückgesetzt.")
+            print()
+        else:
+            print()
+            print("ℹ️  Keine Konfiguration vorhanden.")
+            print()
+        return 0
+    
+    print()
+    print("╔═══════════════════════════════════════════════════════════╗")
+    print("║  ⚙️  KNUSPR SETUP                                          ║")
+    print("╚═══════════════════════════════════════════════════════════╝")
+    print()
+    print("   Richte deine Präferenzen ein für bessere Suchergebnisse!")
+    print()
+    print("─" * 60)
+    print()
+    
+    config = load_config()
+    
+    # 1. Bio-Präferenz
+    print("🌿 Bio-Produkte bevorzugen?")
+    print("   Bio-Produkte werden in Suchergebnissen höher angezeigt.")
+    print()
+    current_bio = config.get("prefer_bio", False)
+    default_bio = "ja" if current_bio else "nein"
+    bio_input = input(f"   Bevorzuge Bio? (ja/nein) [{default_bio}]: ").strip().lower()
+    
+    if bio_input in ("ja", "j", "yes", "y", "1"):
+        config["prefer_bio"] = True
+    elif bio_input in ("nein", "n", "no", "0"):
+        config["prefer_bio"] = False
+    elif bio_input == "":
+        config["prefer_bio"] = current_bio
+    else:
+        config["prefer_bio"] = False
+    
+    print()
+    
+    # 2. Standard-Sortierung
+    print("📊 Standard-Sortierung für Suchergebnisse:")
+    print()
+    print("   1. Relevanz (Standard)")
+    print("   2. Preis aufsteigend (günstigste zuerst)")
+    print("   3. Preis absteigend (teuerste zuerst)")
+    print("   4. Bewertung (beste zuerst)")
+    print()
+    
+    sort_options = {
+        "1": "relevance",
+        "2": "price_asc",
+        "3": "price_desc",
+        "4": "rating"
+    }
+    sort_names = {
+        "relevance": "Relevanz",
+        "price_asc": "Preis aufsteigend",
+        "price_desc": "Preis absteigend",
+        "rating": "Bewertung"
+    }
+    
+    current_sort = config.get("default_sort", "relevance")
+    current_sort_num = next((k for k, v in sort_options.items() if v == current_sort), "1")
+    
+    sort_input = input(f"   Wähle Sortierung (1-4) [{current_sort_num}]: ").strip()
+    
+    if sort_input in sort_options:
+        config["default_sort"] = sort_options[sort_input]
+    elif sort_input == "":
+        config["default_sort"] = current_sort
+    else:
+        config["default_sort"] = "relevance"
+    
+    print()
+    
+    # 3. Ausschlüsse
+    print("🚫 Produkte ausschließen (optional):")
+    print("   Begriffe, die aus Suchergebnissen gefiltert werden.")
+    print("   z.B.: Laktose, Gluten, Schwein")
+    print()
+    
+    current_exclusions = config.get("exclusions", [])
+    current_exclusions_str = ", ".join(current_exclusions) if current_exclusions else ""
+    default_hint = f" [{current_exclusions_str}]" if current_exclusions_str else ""
+    
+    exclusions_input = input(f"   Ausschlüsse (kommagetrennt){default_hint}: ").strip()
+    
+    if exclusions_input:
+        exclusions = [e.strip() for e in exclusions_input.split(",") if e.strip()]
+        config["exclusions"] = exclusions
+    elif exclusions_input == "" and current_exclusions:
+        config["exclusions"] = current_exclusions
+    else:
+        config["exclusions"] = []
+    
+    print()
+    
+    # Save config
+    save_config(config)
+    
+    # Summary
+    print("─" * 60)
+    print()
+    print("✅ Konfiguration gespeichert!")
+    print()
+    print("╔═══════════════════════════════════════════════════════════╗")
+    print("║  📋 ZUSAMMENFASSUNG                                        ║")
+    print("╚═══════════════════════════════════════════════════════════╝")
+    print()
+    
+    bio_status = "✅ Ja" if config.get("prefer_bio") else "❌ Nein"
+    print(f"   🌿 Bio bevorzugen:     {bio_status}")
+    
+    sort_name = sort_names.get(config.get("default_sort", "relevance"), "Relevanz")
+    print(f"   📊 Standard-Sortierung: {sort_name}")
+    
+    exclusions = config.get("exclusions", [])
+    if exclusions:
+        print(f"   🚫 Ausschlüsse:         {', '.join(exclusions)}")
+    else:
+        print(f"   🚫 Ausschlüsse:         Keine")
+    
+    print()
+    print(f"   💾 Gespeichert in: {CONFIG_FILE}")
+    print()
+    print("   Tipp: Nutze 'knuspr setup --reset' um zurückzusetzen.")
+    print()
+    
+    return 0
+
+
 # ==================== NEW COMMANDS ====================
 
 def cmd_delivery(args: argparse.Namespace) -> int:
@@ -939,41 +1165,84 @@ def cmd_slots(args: argparse.Namespace) -> int:
         return 1
     
     try:
-        slots = api.get_delivery_slots()
+        raw_slots = api.get_delivery_slots()
         
         if args.json:
-            print(json.dumps(slots, indent=2, ensure_ascii=False))
-        else:
+            print(json.dumps(raw_slots, indent=2, ensure_ascii=False))
+            return 0
+        
+        print()
+        print("╔═══════════════════════════════════════════════════════════╗")
+        print("║  📅 LIEFERZEITFENSTER                                      ║")
+        print("╚═══════════════════════════════════════════════════════════╝")
+        print()
+        
+        if not raw_slots:
+            print("   ℹ️  Keine Lieferzeitfenster verfügbar.")
             print()
-            print("╔═══════════════════════════════════════════════════════════╗")
-            print("║  📅 LIEFERZEITFENSTER                                      ║")
-            print("╚═══════════════════════════════════════════════════════════╝")
+            return 0
+        
+        # Parse the nested structure: response is a list with dicts containing "slots"
+        # slots is a dict with hour keys ("21", "22", etc.) containing lists of slot objects
+        all_slots = []
+        for day_data in raw_slots:
+            if isinstance(day_data, dict):
+                slots_by_hour = day_data.get("slots", {})
+                if isinstance(slots_by_hour, dict):
+                    for hour, hour_slots in slots_by_hour.items():
+                        if isinstance(hour_slots, list):
+                            all_slots.extend(hour_slots)
+        
+        if not all_slots:
+            print("   ℹ️  Keine Lieferzeitfenster verfügbar.")
+            print()
+            return 0
+        
+        # Group by date and show
+        from collections import defaultdict
+        by_date = defaultdict(list)
+        for slot in all_slots:
+            # Extract date from "since" field (e.g., "2026-02-07 21:00")
+            since = slot.get("since", "")
+            date_part = since.split(" ")[0] if " " in since else since[:10]
+            by_date[date_part].append(slot)
+        
+        displayed = 0
+        for date in sorted(by_date.keys())[:5]:  # Limit to 5 days
+            slots = by_date[date]
+            print(f"   📅 {format_date(date)}")
             print()
             
-            if not slots:
-                print("   ℹ️  Keine Lieferzeitfenster verfügbar.")
-                print()
-                return 0
+            # Show only VIRTUAL slots (1-hour windows) to avoid clutter
+            virtual_slots = [s for s in slots if s.get("type") == "VIRTUAL"]
+            if not virtual_slots:
+                virtual_slots = slots[:8]  # Fallback: first 8 slots
             
-            # Group slots by date if possible
-            displayed = 0
-            for slot in slots[:20]:  # Limit to 20 slots
-                date = slot.get("date") or slot.get("deliveryDate") or "Unbekannt"
-                time_slot = slot.get("time") or slot.get("timeSlot") or f"{slot.get('from', '')} - {slot.get('to', '')}"
-                price = slot.get("price") or slot.get("fee") or 0
-                available = slot.get("available", True) != False
+            for slot in virtual_slots[:8]:
+                time_window = slot.get("timeWindow", "")
+                price = slot.get("price", 0)
+                capacity = slot.get("capacity", "")
+                eco = "🌿" if slot.get("eco") else ""
+                premium = "⭐" if slot.get("premium") else ""
                 
-                status = "✅ Verfügbar" if available else "❌ Belegt"
+                if capacity == "GREEN":
+                    status = "✅"
+                elif capacity == "YELLOW":
+                    status = "⚠️"
+                else:
+                    status = "❌"
                 
-                print(f"   📅 {format_date(date)}")
-                print(f"      🕐 {time_slot}")
-                print(f"      💰 {format_price(price)} | {status}")
-                print()
-                displayed += 1
+                price_str = "Kostenlos" if price == 0 else f"{price:.2f} €"
+                
+                print(f"      🕐 {time_window:12} | 💰 {price_str:10} | {status} {eco}{premium}")
             
-            if len(slots) > 20:
-                print(f"   ... und {len(slots) - 20} weitere Zeitfenster")
-                print()
+            print()
+            displayed += 1
+        
+        remaining_days = len(by_date) - 5
+        if remaining_days > 0:
+            print(f"   ... und {remaining_days} weitere Tage verfügbar")
+            print()
         
         return 0
     except KnusprAPIError as e:
@@ -1595,11 +1864,20 @@ def main() -> int:
     status_parser = subparsers.add_parser("status", help="Login-Status anzeigen")
     status_parser.set_defaults(func=cmd_status)
     
+    # setup command
+    setup_parser = subparsers.add_parser("setup", help="Präferenzen einrichten")
+    setup_parser.add_argument("--reset", action="store_true", help="Konfiguration zurücksetzen")
+    setup_parser.set_defaults(func=cmd_setup)
+    
     # search command
     search_parser = subparsers.add_parser("search", help="Produkte suchen")
     search_parser.add_argument("query", help="Suchbegriff")
     search_parser.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Ergebnisse (Standard: 10)")
     search_parser.add_argument("--favorites", action="store_true", help="Nur Favoriten anzeigen")
+    search_parser.add_argument("--bio", action="store_true", dest="bio", default=None, help="Bio-Produkte bevorzugen")
+    search_parser.add_argument("--no-bio", action="store_false", dest="bio", help="Bio-Präferenz deaktivieren")
+    search_parser.add_argument("--sort", choices=["relevance", "price_asc", "price_desc", "rating"], help="Sortierung")
+    search_parser.add_argument("--exclude", nargs="*", help="Begriffe ausschließen")
     search_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     search_parser.set_defaults(func=cmd_search)
     
