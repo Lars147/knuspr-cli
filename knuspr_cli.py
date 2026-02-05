@@ -1365,29 +1365,46 @@ def cmd_order_detail(args: argparse.Namespace) -> int:
                 print()
                 return 0
             
-            status = order.get("status") or "Unbekannt"
-            date = order.get("deliveredAt") or order.get("createdAt") or ""
-            total_price_raw = order.get("totalPrice") or order.get("price") or 0
-            if isinstance(total_price_raw, dict):
-                total_price = total_price_raw.get("amount", 0)
-            else:
-                total_price = total_price_raw
+            # Parse order details from actual API structure
+            status = order.get("state") or order.get("status") or "Unbekannt"
+            date = order.get("orderTime") or order.get("deliveredAt") or order.get("createdAt") or ""
             
-            print(f"   📊 Status: {status}")
+            # Get total price from priceComposition.total.amount
+            price_comp = order.get("priceComposition", {})
+            total_obj = price_comp.get("total", {})
+            total_price = total_obj.get("amount", 0) if isinstance(total_obj, dict) else total_obj
+            
+            # Translate status
+            status_map = {"DELIVERED": "Geliefert", "PENDING": "In Bearbeitung", "CANCELLED": "Storniert"}
+            status_display = status_map.get(status, status)
+            
+            print(f"   📊 Status: {status_display}")
             print(f"   📅 Datum: {format_date(date)}")
             print(f"   💰 Gesamt: {format_price(total_price)}")
+            
+            # Show delivery info if available
+            delivery_price = price_comp.get("delivery", {}).get("amount", 0)
+            tip = price_comp.get("courierTip", {}).get("amount", 0)
+            if delivery_price > 0 or tip > 0:
+                print(f"   🚚 Lieferung: {format_price(delivery_price)}" + (f" + {format_price(tip)} Trinkgeld" if tip > 0 else ""))
             print()
             
-            products = order.get("products") or order.get("items") or []
+            products = order.get("items") or order.get("products") or []
             if products:
                 print(f"   🛒 Produkte ({len(products)}):")
                 print()
                 for p in products:
-                    name = p.get("productName") or p.get("name") or "Unbekannt"
-                    qty = p.get("quantity") or 1
-                    price_raw = p.get("price") or p.get("totalPrice") or 0
-                    price = price_raw.get("amount", 0) if isinstance(price_raw, dict) else price_raw
-                    print(f"      • {name}")
+                    name = p.get("name") or p.get("productName") or "Unbekannt"
+                    qty = p.get("amount") or p.get("quantity") or 1
+                    textual_amount = p.get("textualAmount", "")
+                    
+                    # Get price from priceComposition.total.amount
+                    p_price_comp = p.get("priceComposition", {})
+                    p_total = p_price_comp.get("total", {})
+                    price = p_total.get("amount", 0) if isinstance(p_total, dict) else 0
+                    
+                    amount_str = f" ({textual_amount})" if textual_amount else ""
+                    print(f"      • {name}{amount_str}")
                     print(f"        {qty}× | {format_price(price)}")
                     print()
         
