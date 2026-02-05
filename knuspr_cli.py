@@ -649,7 +649,7 @@ def cmd_cart_remove(args: argparse.Namespace) -> int:
 
 def cmd_cart_open(args: argparse.Namespace) -> int:
     """Handle cart open command - opens cart in browser."""
-    url = f"{BASE_URL}/warenkorb"
+    url = f"{BASE_URL}/bestellung/mein-warenkorb"
     print()
     print(f"  → Öffne {url}...")
     webbrowser.open(url)
