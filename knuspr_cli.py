@@ -1217,28 +1217,41 @@ def cmd_slots(args: argparse.Namespace) -> int:
             print(f"   📅 {date_display} ({date})")
             print()
             
-            # Show only VIRTUAL slots (1-hour windows) to avoid clutter
-            virtual_slots = [s for s in slots if s.get("type") == "VIRTUAL"]
-            if not virtual_slots:
-                virtual_slots = slots[:8]  # Fallback: first 8 slots
+            # Show slots based on --detailed flag
+            if args.detailed:
+                # Show all slots including 15-min ON_TIME slots
+                display_slots = sorted(slots, key=lambda s: s.get("since", ""))[:16]
+            else:
+                # Show only VIRTUAL slots (1-hour windows)
+                display_slots = [s for s in slots if s.get("type") == "VIRTUAL"]
+                if not display_slots:
+                    display_slots = slots[:12]  # Fallback
             
-            for slot in virtual_slots[:8]:
+            for slot in display_slots[:16]:
                 time_window = slot.get("timeWindow", "")
                 price = slot.get("price", 0)
                 capacity = slot.get("capacity", "")
                 eco = "🌿" if slot.get("eco") else ""
                 premium = "⭐" if slot.get("premium") else ""
                 
-                if capacity == "GREEN":
-                    status = "✅"
-                elif capacity == "YELLOW":
-                    status = "⚠️"
+                # Get capacity percentage and message
+                capacity_dto = slot.get("timeSlotCapacityDTO", {})
+                capacity_percent = capacity_dto.get("totalFreeCapacityPercent", 0)
+                capacity_msg = capacity_dto.get("capacityMessage", "")
+                
+                # Determine status based on capacity
+                if capacity_msg == "Ausgebucht" or capacity_percent == 0:
+                    status = "❌ Ausgebucht"
+                elif capacity == "GREEN" and capacity_percent >= 50:
+                    status = f"✅ {capacity_percent}%"
+                elif capacity == "GREEN" or capacity_percent > 0:
+                    status = f"⚠️ {capacity_percent}%"
                 else:
-                    status = "❌"
+                    status = "❌ Ausgebucht"
                 
                 price_str = "Kostenlos" if price == 0 else f"{price:.2f} €"
                 
-                print(f"      🕐 {time_window:12} | 💰 {price_str:10} | {status} {eco}{premium}")
+                print(f"      🕐 {time_window:12} | 💰 {price_str:10} | {status:14} {eco}{premium}")
             
             print()
         
@@ -1918,6 +1931,7 @@ def main() -> int:
     # slots command
     slots_parser = subparsers.add_parser("slots", help="Verfügbare Lieferzeitfenster anzeigen")
     slots_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    slots_parser.add_argument("--detailed", "-d", action="store_true", help="Zeige auch 15-Minuten Slots")
     slots_parser.set_defaults(func=cmd_slots)
     
     # orders command
