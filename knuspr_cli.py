@@ -412,7 +412,9 @@ class KnusprAPI:
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
         response = self._make_request("/api/v3/orders/upcoming")
-        data = response.get("data", response)
+        if isinstance(response, list):
+            return response
+        data = response.get("data", response) if isinstance(response, dict) else response
         return data if isinstance(data, list) else []
     
     def get_order_history(self, limit: int = 10) -> list[dict[str, Any]]:
@@ -421,7 +423,9 @@ class KnusprAPI:
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
         response = self._make_request(f"/api/v3/orders/delivered?offset=0&limit={limit}")
-        data = response.get("data", response)
+        if isinstance(response, list):
+            return response
+        data = response.get("data", response) if isinstance(response, dict) else response
         return data if isinstance(data, list) else [data] if data else []
     
     def get_order_detail(self, order_id: str) -> dict[str, Any]:
@@ -430,7 +434,9 @@ class KnusprAPI:
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
         response = self._make_request(f"/api/v3/orders/{order_id}")
-        return response.get("data", response)
+        if isinstance(response, dict):
+            return response.get("data", response)
+        return response
     
     def get_delivery_slots(self) -> list[dict[str, Any]]:
         """Get available delivery time slots."""
@@ -443,7 +449,9 @@ class KnusprAPI:
         response = self._make_request(
             f"/services/frontend-service/timeslots-api/0?userId={self.user_id}&addressId={self.address_id}&reasonableDeliveryTime=true"
         )
-        data = response.get("data", response)
+        if isinstance(response, list):
+            return response
+        data = response.get("data", response) if isinstance(response, dict) else response
         return data if isinstance(data, list) else [data] if data else []
     
     def get_premium_info(self) -> dict[str, Any]:
@@ -452,7 +460,9 @@ class KnusprAPI:
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
         response = self._make_request("/services/frontend-service/premium/profile")
-        return response.get("data", response)
+        if isinstance(response, dict):
+            return response.get("data", response)
+        return response if response else {}
     
     def get_reusable_bags_info(self) -> dict[str, Any]:
         """Get reusable bags information."""
@@ -460,7 +470,9 @@ class KnusprAPI:
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
         response = self._make_request("/api/v1/reusable-bags/user-info")
-        return response.get("data", response)
+        if isinstance(response, dict):
+            return response.get("data", response)
+        return response if response else {}
     
     def get_announcements(self) -> list[dict[str, Any]]:
         """Get announcements."""
@@ -468,7 +480,9 @@ class KnusprAPI:
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
         response = self._make_request("/services/frontend-service/announcements/top")
-        data = response.get("data", response)
+        if isinstance(response, list):
+            return response
+        data = response.get("data", response) if isinstance(response, dict) else response
         return data if isinstance(data, list) else []
 
 
