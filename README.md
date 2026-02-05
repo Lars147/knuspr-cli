@@ -46,9 +46,14 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 
 | Feature | Beschreibung |
 |---------|-------------|
+| 🎯 **Setup** | Interaktives Onboarding — Bio-Präferenz, Sortierung, Ausschlüsse |
 | 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
 | 🔍 **Suche** | Produkte durchsuchen mit Filtern |
 | 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
+| 📦 **Lieferung** | Lieferzeitfenster, Slots, Lieferinfos |
+| 📋 **Bestellungen** | Bestellhistorie und Details |
+| 👤 **Account** | Account-Info, Premium-Status |
+| 🍽️ **Mahlzeiten** | Mahlzeitvorschläge nach Kategorie |
 | ⚡ **JSON Output** | Maschinenlesbare Ausgabe für Scripting |
 | 📦 **Zero Deps** | Nur Python Standard Library, keine Dependencies |
 | 🤖 **AI-Agent Friendly** | Perfekt für Claude, Codex, OpenClaw & andere AI Assistenten |
@@ -167,6 +172,16 @@ python3 knuspr_cli.py --help
 
 ## 📖 Usage
 
+### 🎯 Setup & Konfiguration
+
+```bash
+knuspr setup                     # Interaktives Onboarding
+                                 # → Bio-Präferenz (ja/nein/egal)
+                                 # → Standard-Sortierung (Preis/Relevanz/etc.)
+                                 # → Ausschlüsse (z.B. Laktose, Gluten)
+                                 # Suchen nutzen danach automatisch diese Präferenzen!
+```
+
 ### 🔐 Authentication
 
 ```bash
@@ -194,6 +209,37 @@ knuspr cart add 123456                  # Produkt hinzufügen
 knuspr cart add 123456 -q 3             # 3 Stück hinzufügen
 knuspr cart remove 123456               # Produkt entfernen
 knuspr cart open                        # Im Browser öffnen
+```
+
+### 📦 Lieferung
+
+```bash
+knuspr slots                            # Verfügbare Lieferzeitfenster
+knuspr slots --detailed                 # Mit 15-Minuten Slots
+knuspr delivery                         # Aktuelle Lieferinfos
+```
+
+### 📋 Bestellungen
+
+```bash
+knuspr orders                           # Bestellhistorie anzeigen
+knuspr order 12345678                   # Bestelldetails für ID
+```
+
+### 👤 Account
+
+```bash
+knuspr account                          # Account-Info, Premium-Status
+knuspr frequent                         # Häufig gekaufte Produkte
+```
+
+### 🍽️ Mahlzeiten & Vorschläge
+
+```bash
+knuspr meals breakfast                  # Frühstücks-Vorschläge
+knuspr meals lunch                      # Mittagessen-Ideen
+knuspr meals dinner                     # Abendessen-Vorschläge
+knuspr meals snack                      # Snack-Ideen
 ```
 
 ---
@@ -275,8 +321,8 @@ Contributions are welcome!
 ### Ideas & TODOs
 
 - [ ] Favorites management
-- [ ] Order history
-- [ ] Delivery slots
+- [x] ~~Order history~~ ✅
+- [x] ~~Delivery slots~~ ✅
 - [ ] Shopping list import from tmx-cli
 
 ---
