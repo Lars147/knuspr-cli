@@ -8,6 +8,12 @@ Nutzung:
     python3 knuspr_cli.py search "Milch"        # Produkte suchen
     python3 knuspr_cli.py cart show             # Warenkorb anzeigen
     python3 knuspr_cli.py cart add 123456       # Produkt hinzufügen
+    python3 knuspr_cli.py slots                 # Lieferzeitfenster
+    python3 knuspr_cli.py delivery              # Lieferinfo
+    python3 knuspr_cli.py orders                # Bestellhistorie
+    python3 knuspr_cli.py account               # Account-Info
+    python3 knuspr_cli.py frequent              # Häufig gekaufte Produkte
+    python3 knuspr_cli.py meals breakfast       # Mahlzeitvorschläge
 """
 
 import argparse
@@ -16,10 +22,12 @@ import http.cookiejar
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -31,6 +39,38 @@ CREDENTIALS_FILE = Path.home() / ".knuspr_credentials.json"
 
 # Also check workspace secrets
 WORKSPACE_CREDENTIALS = Path(__file__).parent.parent / "secrets" / "knuspr.env"
+
+# Meal category mappings (German categories for Knuspr.de)
+MEAL_CATEGORY_MAPPINGS = {
+    "breakfast": [
+        "Brot & Backwaren", "Milch", "Müsli", "Aufstriche", "Marmelade",
+        "Obst", "Honig", "Butter", "Eier", "Käse", "Joghurt"
+    ],
+    "lunch": [
+        "Fleisch", "Geflügel", "Gemüse", "Beilagen", "Nudeln",
+        "Reis", "Soßen", "Suppen", "Hülsenfrüchte"
+    ],
+    "dinner": [
+        "Fleisch", "Geflügel", "Fisch", "Meeresfrüchte", "Gemüse",
+        "Beilagen", "Nudeln", "Reis", "Kartoffeln", "Soßen"
+    ],
+    "snack": [
+        "Süßigkeiten", "Obst", "Nüsse", "Joghurt",
+        "Käse", "Chips", "Riegel", "Kekse"
+    ],
+    "baking": [
+        "Mehl", "Zucker", "Backzutaten", "Schokolade", "Kakao",
+        "Nüsse", "Eier", "Butter", "Hefe"
+    ],
+    "drinks": [
+        "Getränke", "Kaffee", "Tee", "Milch",
+        "Säfte", "Wasser", "Bier", "Wein"
+    ],
+    "healthy": [
+        "Bio", "Gesund", "Glutenfrei", "Vegan",
+        "Obst", "Gemüse", "Nüsse", "Hülsenfrüchte"
+    ]
+}
 
 
 class KnusprAPIError(Exception):
@@ -47,7 +87,17 @@ class KnusprAPI:
         self.cookies: dict[str, str] = {}
         self.user_id: Optional[int] = None
         self.address_id: Optional[int] = None
+        self._last_request_time: float = 0
+        self._min_request_interval: float = 0.1  # 100ms between requests
         self._load_session()
+    
+    def _rate_limit(self) -> None:
+        """Apply rate limiting between requests."""
+        now = time.time()
+        elapsed = now - self._last_request_time
+        if elapsed < self._min_request_interval:
+            time.sleep(self._min_request_interval - elapsed)
+        self._last_request_time = time.time()
     
     def _get_headers(self) -> dict[str, str]:
         """Get default HTTP headers."""
@@ -79,6 +129,8 @@ class KnusprAPI:
         data: Optional[dict] = None
     ) -> dict[str, Any]:
         """Make HTTP request to Knuspr API."""
+        self._rate_limit()
+        
         url = f"{BASE_URL}{endpoint}"
         headers = self._get_headers()
         
@@ -341,6 +393,83 @@ class KnusprAPI:
             data=payload
         )
         return True
+    
+    # ==================== NEW API METHODS ====================
+    
+    def get_delivery_info(self) -> dict[str, Any]:
+        """Get delivery information."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request(
+            "/services/frontend-service/first-delivery?reasonableDeliveryTime=true"
+        )
+        return response.get("data", response)
+    
+    def get_upcoming_orders(self) -> list[dict[str, Any]]:
+        """Get upcoming/pending orders."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request("/api/v3/orders/upcoming")
+        data = response.get("data", response)
+        return data if isinstance(data, list) else []
+    
+    def get_order_history(self, limit: int = 10) -> list[dict[str, Any]]:
+        """Get order history."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request(f"/api/v3/orders/delivered?offset=0&limit={limit}")
+        data = response.get("data", response)
+        return data if isinstance(data, list) else [data] if data else []
+    
+    def get_order_detail(self, order_id: str) -> dict[str, Any]:
+        """Get details of a specific order."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request(f"/api/v3/orders/{order_id}")
+        return response.get("data", response)
+    
+    def get_delivery_slots(self) -> list[dict[str, Any]]:
+        """Get available delivery time slots."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        if not self.user_id or not self.address_id:
+            raise KnusprAPIError("User ID or Address ID not available")
+        
+        response = self._make_request(
+            f"/services/frontend-service/timeslots-api/0?userId={self.user_id}&addressId={self.address_id}&reasonableDeliveryTime=true"
+        )
+        data = response.get("data", response)
+        return data if isinstance(data, list) else [data] if data else []
+    
+    def get_premium_info(self) -> dict[str, Any]:
+        """Get premium membership information."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request("/services/frontend-service/premium/profile")
+        return response.get("data", response)
+    
+    def get_reusable_bags_info(self) -> dict[str, Any]:
+        """Get reusable bags information."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request("/api/v1/reusable-bags/user-info")
+        return response.get("data", response)
+    
+    def get_announcements(self) -> list[dict[str, Any]]:
+        """Get announcements."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request("/services/frontend-service/announcements/top")
+        data = response.get("data", response)
+        return data if isinstance(data, list) else []
 
 
 def load_credentials() -> tuple[Optional[str], Optional[str]]:
@@ -379,6 +508,25 @@ def load_credentials() -> tuple[Optional[str], Optional[str]]:
             pass
     
     return None, None
+
+
+def format_price(price: float, currency: str = "€") -> str:
+    """Format price for display."""
+    if price is None:
+        return "N/A"
+    return f"{price:.2f} {currency}"
+
+
+def format_date(date_str: str) -> str:
+    """Format date string for display."""
+    if not date_str:
+        return "Unbekannt"
+    try:
+        # Try ISO format
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.strftime("%d.%m.%Y %H:%M")
+    except:
+        return date_str
 
 
 def cmd_login(args: argparse.Namespace) -> int:
@@ -688,11 +836,734 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+# ==================== NEW COMMANDS ====================
+
+def cmd_delivery(args: argparse.Namespace) -> int:
+    """Handle delivery command - show delivery info and upcoming orders."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        delivery_info = None
+        upcoming_orders = []
+        
+        try:
+            delivery_info = api.get_delivery_info()
+        except KnusprAPIError:
+            pass
+        
+        try:
+            upcoming_orders = api.get_upcoming_orders()
+        except KnusprAPIError:
+            pass
+        
+        result = {
+            "delivery_info": delivery_info,
+            "upcoming_orders": upcoming_orders
+        }
+        
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  🚚 LIEFERINFORMATIONEN                                    ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            if delivery_info:
+                fee = delivery_info.get("deliveryFee") or delivery_info.get("fee") or 0
+                free_from = delivery_info.get("freeDeliveryFrom") or delivery_info.get("freeFrom") or 0
+                print(f"   💰 Liefergebühr: {format_price(fee)}")
+                print(f"   🆓 Kostenlos ab: {format_price(free_from)}")
+                print()
+            
+            if upcoming_orders:
+                print(f"📦 Bevorstehende Bestellungen ({len(upcoming_orders)}):")
+                print()
+                for order in upcoming_orders:
+                    order_id = order.get("id") or order.get("orderNumber")
+                    date = order.get("deliveryDate") or order.get("estimatedDelivery") or "Unbekannt"
+                    status = order.get("status") or "Unbekannt"
+                    print(f"   • Bestellung #{order_id}")
+                    print(f"     📅 {format_date(date)} | Status: {status}")
+                    print()
+            else:
+                print("   ℹ️  Keine bevorstehenden Bestellungen.")
+                print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_slots(args: argparse.Namespace) -> int:
+    """Handle slots command - show available delivery time slots."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        slots = api.get_delivery_slots()
+        
+        if args.json:
+            print(json.dumps(slots, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  📅 LIEFERZEITFENSTER                                      ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            if not slots:
+                print("   ℹ️  Keine Lieferzeitfenster verfügbar.")
+                print()
+                return 0
+            
+            # Group slots by date if possible
+            displayed = 0
+            for slot in slots[:20]:  # Limit to 20 slots
+                date = slot.get("date") or slot.get("deliveryDate") or "Unbekannt"
+                time_slot = slot.get("time") or slot.get("timeSlot") or f"{slot.get('from', '')} - {slot.get('to', '')}"
+                price = slot.get("price") or slot.get("fee") or 0
+                available = slot.get("available", True) != False
+                
+                status = "✅ Verfügbar" if available else "❌ Belegt"
+                
+                print(f"   📅 {format_date(date)}")
+                print(f"      🕐 {time_slot}")
+                print(f"      💰 {format_price(price)} | {status}")
+                print()
+                displayed += 1
+            
+            if len(slots) > 20:
+                print(f"   ... und {len(slots) - 20} weitere Zeitfenster")
+                print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_orders(args: argparse.Namespace) -> int:
+    """Handle orders command - show order history."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        orders = api.get_order_history(limit=args.limit)
+        
+        if args.json:
+            print(json.dumps(orders, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  📋 BESTELLHISTORIE                                        ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            if not orders:
+                print("   ℹ️  Keine Bestellungen gefunden.")
+                print()
+                return 0
+            
+            print(f"   Gefunden: {len(orders)} Bestellungen")
+            print()
+            
+            for order in orders:
+                order_id = order.get("id") or order.get("orderNumber")
+                date = order.get("orderTime") or order.get("deliveredAt") or order.get("createdAt") or ""
+                
+                # Get price from various possible locations
+                price_comp = order.get("priceComposition", {})
+                price = price_comp.get("total") or order.get("totalPrice") or order.get("price") or 0
+                
+                items_count = order.get("itemsCount") or 0
+                
+                print(f"   📦 Bestellung #{order_id}")
+                print(f"      📅 {format_date(date)}")
+                print(f"      🛒 {items_count} Artikel | 💰 {format_price(price)}")
+                print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_order_detail(args: argparse.Namespace) -> int:
+    """Handle order detail command - show details of a specific order."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        order = api.get_order_detail(args.order_id)
+        
+        if args.json:
+            print(json.dumps(order, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print(f"║  📦 BESTELLUNG #{args.order_id}                            ")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            if not order:
+                print(f"   ℹ️  Bestellung {args.order_id} nicht gefunden.")
+                print()
+                return 0
+            
+            status = order.get("status") or "Unbekannt"
+            date = order.get("deliveredAt") or order.get("createdAt") or ""
+            total_price = order.get("totalPrice") or order.get("price") or 0
+            
+            print(f"   📊 Status: {status}")
+            print(f"   📅 Datum: {format_date(date)}")
+            print(f"   💰 Gesamt: {format_price(total_price)}")
+            print()
+            
+            products = order.get("products") or order.get("items") or []
+            if products:
+                print(f"   🛒 Produkte ({len(products)}):")
+                print()
+                for p in products:
+                    name = p.get("productName") or p.get("name") or "Unbekannt"
+                    qty = p.get("quantity") or 1
+                    price = p.get("price") or p.get("totalPrice") or 0
+                    print(f"      • {name}")
+                    print(f"        {qty}× | {format_price(price)}")
+                    print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_account(args: argparse.Namespace) -> int:
+    """Handle account command - show account information."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        premium = None
+        bags = None
+        announcements = None
+        
+        try:
+            premium = api.get_premium_info()
+        except KnusprAPIError:
+            pass
+        
+        try:
+            bags = api.get_reusable_bags_info()
+        except KnusprAPIError:
+            pass
+        
+        try:
+            announcements = api.get_announcements()
+        except KnusprAPIError:
+            pass
+        
+        result = {
+            "premium": premium,
+            "bags": bags,
+            "announcements": announcements
+        }
+        
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  👤 ACCOUNT INFORMATION                                    ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            # Premium Info
+            if premium:
+                is_premium = premium.get("stats", {}).get("orderCount") is not None or premium.get("premiumLimits") is not None
+                savings = premium.get("savings", {}).get("total", {}).get("amount", {})
+                saved_total = savings.get("amount") or premium.get("stats", {}).get("savedTotal", {}).get("full") or 0
+                
+                print(f"   ⭐ Premium Status: {'✅ Aktiv' if is_premium else '❌ Inaktiv'}")
+                
+                if is_premium and saved_total > 0:
+                    currency = savings.get("currency", "€")
+                    print(f"   💰 Gespart: {format_price(saved_total, currency)}")
+                
+                limits = premium.get("premiumLimits", {}).get("ordersWithoutPriceLimit", {})
+                if limits:
+                    remaining = limits.get("remaining", 0)
+                    total = limits.get("total", 0)
+                    print(f"   📦 Bestellungen ohne Mindestbestellwert: {remaining}/{total}")
+                print()
+            
+            # Reusable Bags
+            if bags:
+                count = bags.get("count") or bags.get("bagsCount") or 0
+                saved_plastic = bags.get("savedPlastic") or bags.get("plasticSaved") or 0
+                
+                print(f"   ♻️  Mehrwegtaschen: {count}")
+                if saved_plastic > 0:
+                    print(f"   🌱 Plastik gespart: {saved_plastic}g")
+                print()
+            
+            # Announcements
+            if announcements and len(announcements) > 0:
+                print(f"   📢 Ankündigungen ({len(announcements)}):")
+                print()
+                for ann in announcements[:5]:
+                    title = ann.get("title") or ann.get("headline") or "Ankündigung"
+                    message = ann.get("message") or ann.get("content") or ""
+                    print(f"      • {title}")
+                    if message:
+                        # Truncate long messages
+                        if len(message) > 80:
+                            message = message[:80] + "..."
+                        print(f"        {message}")
+                    print()
+            else:
+                print("   📢 Keine Ankündigungen.")
+                print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_frequent(args: argparse.Namespace) -> int:
+    """Handle frequent command - show frequently purchased items."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        orders_to_analyze = min(20, max(1, args.orders))
+        top_items = min(30, max(3, args.top))
+        
+        if not args.json:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  ⭐ HÄUFIG GEKAUFTE PRODUKTE                               ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            print(f"   → Analysiere {orders_to_analyze} Bestellungen...")
+        
+        order_history = api.get_order_history(limit=orders_to_analyze)
+        
+        if not order_history:
+            if args.json:
+                print(json.dumps({"error": "Keine Bestellhistorie gefunden"}, indent=2))
+            else:
+                print()
+                print("   ℹ️  Keine Bestellhistorie gefunden.")
+                print()
+            return 0
+        
+        # Analyze products
+        product_map = {}
+        processed_orders = 0
+        total_products = 0
+        
+        for order in order_history:
+            try:
+                order_id = order.get("id") or order.get("orderNumber")
+                if not order_id:
+                    continue
+                
+                if not args.json:
+                    print(f"   → Lade Bestellung #{order_id}...")
+                
+                order_detail = api.get_order_detail(str(order_id))
+                if not order_detail:
+                    continue
+                
+                processed_orders += 1
+                products = order_detail.get("products") or order_detail.get("items") or []
+                order_date = order_detail.get("deliveredAt") or order_detail.get("createdAt")
+                
+                for product in products:
+                    product_id = product.get("productId") or product.get("id")
+                    product_name = product.get("productName") or product.get("name")
+                    
+                    if not product_id or not product_name:
+                        continue
+                    
+                    total_products += 1
+                    key = str(product_id)
+                    
+                    # Get category
+                    categories = product.get("categories") or []
+                    main_category = None
+                    for cat in categories:
+                        if cat.get("level") == 1:
+                            main_category = cat
+                            break
+                    if not main_category and categories:
+                        main_category = categories[0]
+                    
+                    category_name = main_category.get("name", "Unkategorisiert") if main_category else "Unkategorisiert"
+                    category_id = main_category.get("id", 0) if main_category else 0
+                    
+                    if key in product_map:
+                        existing = product_map[key]
+                        existing["frequency"] += 1
+                        existing["total_quantity"] += (product.get("quantity") or 1)
+                        
+                        if product.get("price"):
+                            current_avg = existing.get("average_price") or 0
+                            existing["average_price"] = (current_avg * (existing["frequency"] - 1) + product["price"]) / existing["frequency"]
+                        
+                        if order_date and (not existing.get("last_order_date") or order_date > existing["last_order_date"]):
+                            existing["last_order_date"] = order_date
+                    else:
+                        product_map[key] = {
+                            "product_id": str(product_id),
+                            "product_name": product_name,
+                            "brand": product.get("brand") or "",
+                            "frequency": 1,
+                            "total_quantity": product.get("quantity") or 1,
+                            "last_order_date": order_date,
+                            "average_price": product.get("price") or 0,
+                            "category": category_name,
+                            "category_id": category_id
+                        }
+            except:
+                continue
+        
+        # Sort by frequency
+        sorted_products = sorted(product_map.values(), key=lambda x: x["frequency"], reverse=True)[:top_items]
+        
+        result = {
+            "analyzed_orders": processed_orders,
+            "total_products": total_products,
+            "top_items": sorted_products
+        }
+        
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print(f"   📊 Analysiert: {processed_orders} Bestellungen | {total_products} Produkte")
+            print()
+            
+            if not sorted_products:
+                print("   ℹ️  Keine Produkte gefunden.")
+                print()
+                return 0
+            
+            print(f"   🏆 Top {len(sorted_products)} Produkte:")
+            print()
+            
+            for i, item in enumerate(sorted_products, 1):
+                brand = f" ({item['brand']})" if item['brand'] else ""
+                avg_price = format_price(item['average_price']) if item['average_price'] else "N/A"
+                last_order = format_date(item['last_order_date']) if item['last_order_date'] else "N/A"
+                
+                print(f"   {i:2}. {item['product_name']}{brand}")
+                print(f"       📦 {item['frequency']}× bestellt | {item['total_quantity']} Stück | ⌀ {avg_price}")
+                print(f"       📅 Zuletzt: {last_order}")
+                print(f"       ID: {item['product_id']}")
+                print()
+            
+            # Show categories breakdown if requested
+            if args.categories:
+                print("─" * 60)
+                print()
+                print("   📂 Nach Kategorie:")
+                print()
+                
+                # Group by category
+                category_map = {}
+                for product in product_map.values():
+                    cat_id = product["category_id"]
+                    if cat_id not in category_map:
+                        category_map[cat_id] = {"name": product["category"], "products": []}
+                    category_map[cat_id]["products"].append(product)
+                
+                # Sort categories by total frequency
+                sorted_categories = sorted(
+                    category_map.values(),
+                    key=lambda x: sum(p["frequency"] for p in x["products"]),
+                    reverse=True
+                )
+                
+                for category in sorted_categories[:10]:
+                    print(f"   {category['name'].upper()}")
+                    top_cat_products = sorted(category["products"], key=lambda x: x["frequency"], reverse=True)[:3]
+                    for p in top_cat_products:
+                        print(f"      • {p['product_name']} ({p['frequency']}×)")
+                    print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_meals(args: argparse.Namespace) -> int:
+    """Handle meals command - get meal suggestions based on purchase history."""
+    api = KnusprAPI()
+    
+    meal_type = args.meal_type.lower()
+    valid_types = list(MEAL_CATEGORY_MAPPINGS.keys())
+    
+    if meal_type not in valid_types:
+        if args.json:
+            print(json.dumps({"error": f"Ungültiger Mahlzeittyp: {meal_type}. Gültig: {', '.join(valid_types)}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültiger Mahlzeittyp: {meal_type}")
+            print(f"   Gültige Typen: {', '.join(valid_types)}")
+            print()
+        return 1
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        items_count = min(30, max(3, args.count))
+        orders_to_analyze = min(20, max(1, args.orders))
+        relevant_categories = MEAL_CATEGORY_MAPPINGS[meal_type]
+        
+        meal_names = {
+            "breakfast": "Frühstück",
+            "lunch": "Mittagessen",
+            "dinner": "Abendessen",
+            "snack": "Snacks",
+            "baking": "Backen",
+            "drinks": "Getränke",
+            "healthy": "Gesund"
+        }
+        meal_name = meal_names.get(meal_type, meal_type.capitalize())
+        
+        if not args.json:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print(f"║  🍽️  {meal_name.upper()}-VORSCHLÄGE                              ")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            print(f"   → Analysiere {orders_to_analyze} Bestellungen...")
+        
+        order_history = api.get_order_history(limit=orders_to_analyze)
+        
+        if not order_history:
+            if args.json:
+                print(json.dumps({"error": "Keine Bestellhistorie gefunden"}, indent=2))
+            else:
+                print()
+                print("   ℹ️  Keine Bestellhistorie gefunden.")
+                print()
+            return 0
+        
+        # Analyze products
+        product_map = {}
+        processed_orders = 0
+        
+        for order in order_history:
+            try:
+                order_id = order.get("id") or order.get("orderNumber")
+                if not order_id:
+                    continue
+                
+                if not args.json:
+                    print(f"   → Lade Bestellung #{order_id}...")
+                
+                order_detail = api.get_order_detail(str(order_id))
+                if not order_detail:
+                    continue
+                
+                processed_orders += 1
+                products = order_detail.get("products") or order_detail.get("items") or []
+                
+                for product in products:
+                    product_id = product.get("productId") or product.get("id")
+                    product_name = product.get("productName") or product.get("name")
+                    
+                    if not product_id or not product_name:
+                        continue
+                    
+                    # Get category
+                    categories = product.get("categories") or []
+                    main_category = None
+                    for cat in categories:
+                        if cat.get("level") == 1:
+                            main_category = cat
+                            break
+                    if not main_category and categories:
+                        main_category = categories[0]
+                    
+                    category_name = main_category.get("name", "") if main_category else ""
+                    
+                    # Check if relevant for meal type
+                    is_relevant = any(
+                        cat.lower() in category_name.lower() or category_name.lower() in cat.lower()
+                        for cat in relevant_categories
+                    )
+                    
+                    if not is_relevant:
+                        continue
+                    
+                    key = str(product_id)
+                    
+                    if key in product_map:
+                        existing = product_map[key]
+                        existing["frequency"] += 1
+                        existing["total_quantity"] += (product.get("quantity") or 1)
+                        
+                        if product.get("price"):
+                            current_avg = existing.get("average_price") or 0
+                            existing["average_price"] = (current_avg * (existing["frequency"] - 1) + product["price"]) / existing["frequency"]
+                    else:
+                        product_map[key] = {
+                            "product_id": str(product_id),
+                            "product_name": product_name,
+                            "brand": product.get("brand") or "",
+                            "frequency": 1,
+                            "total_quantity": product.get("quantity") or 1,
+                            "average_price": product.get("price") or 0,
+                            "category": category_name
+                        }
+            except:
+                continue
+        
+        # Sort by frequency
+        sorted_products = sorted(product_map.values(), key=lambda x: x["frequency"], reverse=True)[:items_count]
+        
+        result = {
+            "meal_type": meal_type,
+            "analyzed_orders": processed_orders,
+            "relevant_items": len(product_map),
+            "suggestions": sorted_products
+        }
+        
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print(f"   📊 Analysiert: {processed_orders} Bestellungen | {len(product_map)} relevante Produkte")
+            print()
+            
+            if not sorted_products:
+                print(f"   ℹ️  Keine {meal_name}-Produkte in deiner Bestellhistorie gefunden.")
+                print()
+                return 0
+            
+            print(f"   🍽️  Top {len(sorted_products)} {meal_name}-Produkte:")
+            print()
+            
+            for i, item in enumerate(sorted_products, 1):
+                brand = f" ({item['brand']})" if item['brand'] else ""
+                avg_price = format_price(item['average_price']) if item['average_price'] else "N/A"
+                category = f" | {item['category']}" if item['category'] else ""
+                
+                print(f"   {i:2}. {item['product_name']}{brand}")
+                print(f"       📦 {item['frequency']}× bestellt | ⌀ {avg_price}{category}")
+                print(f"       ID: {item['product_id']}")
+                print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         prog="knuspr",
-        description="🛒 Knuspr.de im Terminal — Einkaufen, Suchen, Warenkorb verwalten"
+        description="🛒 Knuspr.de im Terminal — Einkaufen, Suchen, Warenkorb verwalten, Lieferzeiten, Bestellhistorie und mehr"
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
     
@@ -741,6 +1612,51 @@ def main() -> int:
     # cart open
     cart_open_parser = cart_subparsers.add_parser("open", help="Warenkorb im Browser öffnen")
     cart_open_parser.set_defaults(func=cmd_cart_open)
+    
+    # ==================== NEW COMMANDS ====================
+    
+    # delivery command
+    delivery_parser = subparsers.add_parser("delivery", help="Lieferinformationen anzeigen")
+    delivery_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    delivery_parser.set_defaults(func=cmd_delivery)
+    
+    # slots command
+    slots_parser = subparsers.add_parser("slots", help="Verfügbare Lieferzeitfenster anzeigen")
+    slots_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    slots_parser.set_defaults(func=cmd_slots)
+    
+    # orders command
+    orders_parser = subparsers.add_parser("orders", help="Bestellhistorie anzeigen")
+    orders_parser.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Bestellungen (Standard: 10)")
+    orders_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    orders_parser.set_defaults(func=cmd_orders)
+    
+    # order command (single order detail)
+    order_parser = subparsers.add_parser("order", help="Details einer Bestellung anzeigen")
+    order_parser.add_argument("order_id", help="Bestellnummer")
+    order_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    order_parser.set_defaults(func=cmd_order_detail)
+    
+    # account command
+    account_parser = subparsers.add_parser("account", help="Account-Informationen anzeigen")
+    account_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    account_parser.set_defaults(func=cmd_account)
+    
+    # frequent command
+    frequent_parser = subparsers.add_parser("frequent", help="Häufig gekaufte Produkte anzeigen")
+    frequent_parser.add_argument("-o", "--orders", type=int, default=5, help="Anzahl Bestellungen zu analysieren (Standard: 5)")
+    frequent_parser.add_argument("-t", "--top", type=int, default=10, help="Anzahl Top-Produkte (Standard: 10)")
+    frequent_parser.add_argument("--categories", action="store_true", help="Nach Kategorie gruppieren")
+    frequent_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    frequent_parser.set_defaults(func=cmd_frequent)
+    
+    # meals command
+    meals_parser = subparsers.add_parser("meals", help="Mahlzeitvorschläge basierend auf Kaufhistorie")
+    meals_parser.add_argument("meal_type", help="Mahlzeittyp: breakfast, lunch, dinner, snack, baking, drinks, healthy")
+    meals_parser.add_argument("-c", "--count", type=int, default=10, help="Anzahl Vorschläge (Standard: 10)")
+    meals_parser.add_argument("-o", "--orders", type=int, default=5, help="Anzahl Bestellungen zu analysieren (Standard: 5)")
+    meals_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    meals_parser.set_defaults(func=cmd_meals)
     
     # Parse and execute
     args = parser.parse_args()
