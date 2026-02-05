@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""
-Knuspr CLI - Command-line interface for Knuspr.de online supermarket.
+"""Knuspr CLI - Einkaufen bei Knuspr.de vom Terminal aus.
 
-No external dependencies required (stdlib only).
-Based on reverse-engineered Rohlik/Knuspr API.
+Rein Python, keine externen Dependencies (nur stdlib).
+
+Nutzung:
+    python3 knuspr_cli.py login                 # Einloggen
+    python3 knuspr_cli.py search "Milch"        # Produkte suchen
+    python3 knuspr_cli.py cart show             # Warenkorb anzeigen
+    python3 knuspr_cli.py cart add 123456       # Produkt hinzufügen
 """
 
 import argparse
+import getpass
 import http.cookiejar
 import json
 import os
@@ -334,8 +339,11 @@ class KnusprAPI:
         return True
 
 
-def load_credentials() -> tuple[str, str]:
-    """Load credentials from file or environment."""
+def load_credentials() -> tuple[Optional[str], Optional[str]]:
+    """Load credentials from file or environment (returns None if not found)."""
+    email = None
+    password = None
+    
     # 1. Check environment variables
     email = os.environ.get("KNUSPR_EMAIL")
     password = os.environ.get("KNUSPR_PASSWORD")
@@ -356,46 +364,99 @@ def load_credentials() -> tuple[str, str]:
     
     # 3. Check ~/.knuspr_credentials.json
     if CREDENTIALS_FILE.exists():
-        with open(CREDENTIALS_FILE) as f:
-            data = json.load(f)
-            email = data.get("email")
-            password = data.get("password")
-            if email and password:
-                return email, password
+        try:
+            with open(CREDENTIALS_FILE) as f:
+                data = json.load(f)
+                email = data.get("email")
+                password = data.get("password")
+                if email and password:
+                    return email, password
+        except (json.JSONDecodeError, IOError):
+            pass
     
-    raise KnusprAPIError(
-        "No credentials found. Set KNUSPR_EMAIL/KNUSPR_PASSWORD env vars, "
-        f"create {CREDENTIALS_FILE}, or create {WORKSPACE_CREDENTIALS}"
-    )
+    return None, None
 
 
 def cmd_login(args: argparse.Namespace) -> int:
     """Handle login command."""
     api = KnusprAPI()
     
-    try:
-        email, password = load_credentials()
-    except KnusprAPIError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    # Check if already logged in
+    if api.is_logged_in():
+        print()
+        print("✅ Bereits eingeloggt!")
+        print(f"   User ID: {api.user_id}")
+        print()
+        print("   Zum erneuten Einloggen erst 'knuspr logout' ausführen.")
+        print()
+        return 0
+    
+    print()
+    print("╔═══════════════════════════════════════════════════════════╗")
+    print("║  🛒 KNUSPR LOGIN                                          ║")
+    print("╚═══════════════════════════════════════════════════════════╝")
+    print()
+    
+    # Try to load credentials from files first
+    email, password = load_credentials()
+    
+    # If command-line args provided, use them
+    if getattr(args, 'email', None):
+        email = args.email
+    if getattr(args, 'password', None):
+        password = args.password
+    
+    # Interactive prompts for missing credentials
+    if not email:
+        email = input("📧 E-Mail: ").strip()
+    else:
+        print(f"📧 E-Mail: {email}")
+    
+    if not password:
+        password = getpass.getpass("🔑 Passwort: ")
+    else:
+        print("🔑 Passwort: ********")
+    
+    if not email or not password:
+        print()
+        print("❌ E-Mail und Passwort werden benötigt!")
         return 1
+    
+    print()
+    print("  → Verbinde mit Knuspr.de...")
     
     try:
         result = api.login(email, password)
-        print(f"✓ Logged in as {result['name']} ({result['email']})")
-        print(f"  User ID: {result['user_id']}")
+        print("  → Authentifizierung erfolgreich...")
+        print("  → Speichere Session...")
+        print()
+        print(f"✅ Eingeloggt als {result['name']} ({result['email']})")
+        print(f"   User ID: {result['user_id']}")
         if result['address_id']:
-            print(f"  Address ID: {result['address_id']}")
+            print(f"   Adresse ID: {result['address_id']}")
+        print()
         return 0
     except KnusprAPIError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print()
+        print(f"❌ Login fehlgeschlagen: {e}")
+        print()
         return 1
 
 
 def cmd_logout(args: argparse.Namespace) -> int:
     """Handle logout command."""
     api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        print()
+        print("ℹ️  Nicht eingeloggt.")
+        print()
+        return 0
+    
     api.logout()
-    print("✓ Logged out and cleared session")
+    print()
+    print("✅ Ausgeloggt und Session gelöscht.")
+    print()
     return 0
 
 
@@ -403,7 +464,21 @@ def cmd_search(args: argparse.Namespace) -> int:
     """Handle search command."""
     api = KnusprAPI()
     
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
     try:
+        if not args.json:
+            print()
+            print(f"🔍 Suche in Knuspr: '{args.query}'")
+            print("─" * 50)
+        
         results = api.search_products(
             args.query,
             limit=args.limit,
@@ -414,17 +489,19 @@ def cmd_search(args: argparse.Namespace) -> int:
             print(json.dumps(results, indent=2, ensure_ascii=False))
         else:
             if not results:
-                print(f"No products found for '{args.query}'")
+                print(f"Keine Produkte gefunden für '{args.query}'")
+                print()
                 return 0
             
-            print(f"Found {len(results)} products for '{args.query}':\n")
-            for p in results:
-                stock = "✓" if p["in_stock"] else "✗"
-                print(f"[{p['id']}] {p['name']}")
-                print(f"    Price: {p['price']} {p['currency']} ({p['amount']})")
-                if p['brand']:
-                    print(f"    Brand: {p['brand']}")
-                print(f"    In Stock: {stock}")
+            print(f"Gefunden: {len(results)} Produkte")
+            print()
+            
+            for i, p in enumerate(results, 1):
+                stock = "✅" if p["in_stock"] else "❌"
+                brand = f" ({p['brand']})" if p['brand'] else ""
+                print(f"  {i:2}. {p['name']}{brand}")
+                print(f"      💰 {p['price']} {p['currency']}  │  📦 {p['amount']}  │  {stock}")
+                print(f"      ID: {p['id']}")
                 print()
         
         return 0
@@ -432,7 +509,9 @@ def cmd_search(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps({"error": str(e)}, indent=2))
         else:
-            print(f"Error: {e}", file=sys.stderr)
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
         return 1
 
 
@@ -440,40 +519,62 @@ def cmd_cart_show(args: argparse.Namespace) -> int:
     """Handle cart show command."""
     api = KnusprAPI()
     
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
     try:
         cart = api.get_cart()
         
         if args.json:
             print(json.dumps(cart, indent=2, ensure_ascii=False))
         else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  🛒 WARENKORB                                              ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
             if not cart["products"]:
-                print("Cart is empty")
+                print("   (leer)")
+                print()
                 return 0
             
-            print(f"Cart ({cart['item_count']} items):\n")
+            print(f"📦 Produkte ({cart['item_count']}):")
+            print()
+            
             for p in cart["products"]:
-                print(f"  [{p['id']}] {p['name']}")
-                print(f"      Quantity: {p['quantity']} × {p['price']:.2f} € = {p['total_price']:.2f} €")
-                print(f"      Order Field ID: {p['order_field_id']}")
+                print(f"   • {p['name']}")
+                print(f"     {p['quantity']}× {p['price']:.2f} € = {p['total_price']:.2f} €")
+                print(f"     [ID: {p['id']}]")
                 print()
             
-            print(f"─────────────────────────────────")
-            print(f"Total: {cart['total_price']:.2f} {cart['currency']}")
+            print("─" * 60)
+            print(f"   💰 Gesamt: {cart['total_price']:.2f} {cart['currency']}")
             
             if cart['min_order_price'] and cart['total_price'] < cart['min_order_price']:
-                print(f"⚠ Minimum order: {cart['min_order_price']:.2f} €")
+                remaining = cart['min_order_price'] - cart['total_price']
+                print(f"   ⚠️  Mindestbestellwert: {cart['min_order_price']:.2f} € (noch {remaining:.2f} €)")
             
             if cart['can_order']:
-                print("✓ Ready to order")
+                print("   ✅ Bestellbereit")
             else:
-                print("✗ Cannot order yet")
+                print("   ❌ Noch nicht bestellbar")
+            print()
         
         return 0
     except KnusprAPIError as e:
         if args.json:
             print(json.dumps({"error": str(e)}, indent=2))
         else:
-            print(f"Error: {e}", file=sys.stderr)
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
         return 1
 
 
@@ -481,12 +582,24 @@ def cmd_cart_add(args: argparse.Namespace) -> int:
     """Handle cart add command."""
     api = KnusprAPI()
     
+    if not api.is_logged_in():
+        print()
+        print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+        print()
+        return 1
+    
     try:
+        print()
+        print(f"  → Füge Produkt {args.product_id} hinzu...")
         api.add_to_cart(args.product_id, args.quantity)
-        print(f"✓ Added product {args.product_id} (qty: {args.quantity}) to cart")
+        print()
+        print(f"✅ Produkt hinzugefügt (ID: {args.product_id}, Menge: {args.quantity})")
+        print()
         return 0
     except KnusprAPIError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print()
+        print(f"❌ Fehler: {e}")
+        print()
         return 1
 
 
@@ -494,34 +607,55 @@ def cmd_cart_remove(args: argparse.Namespace) -> int:
     """Handle cart remove command."""
     api = KnusprAPI()
     
-    # First, get cart to find the order_field_id for this product
+    if not api.is_logged_in():
+        print()
+        print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+        print()
+        return 1
+    
     try:
+        print()
+        print(f"  → Suche Produkt {args.product_id}...")
         cart = api.get_cart()
         
         # Find the product
         order_field_id = None
+        product_name = None
         for p in cart["products"]:
             if str(p["id"]) == str(args.product_id):
                 order_field_id = p["order_field_id"]
+                product_name = p["name"]
                 break
         
         if not order_field_id:
             # Maybe they passed the order_field_id directly
             order_field_id = args.product_id
         
+        print(f"  → Entferne aus Warenkorb...")
         api.remove_from_cart(str(order_field_id))
-        print(f"✓ Removed product from cart")
+        print()
+        if product_name:
+            print(f"✅ Entfernt: {product_name}")
+        else:
+            print(f"✅ Produkt entfernt")
+        print()
         return 0
     except KnusprAPIError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print()
+        print(f"❌ Fehler: {e}")
+        print()
         return 1
 
 
 def cmd_cart_open(args: argparse.Namespace) -> int:
     """Handle cart open command - opens cart in browser."""
     url = f"{BASE_URL}/obchod/kosik"
+    print()
+    print(f"  → Öffne {url}...")
     webbrowser.open(url)
-    print(f"✓ Opened {url} in browser")
+    print()
+    print("✅ Warenkorb im Browser geöffnet")
+    print()
     return 0
 
 
@@ -529,12 +663,24 @@ def cmd_status(args: argparse.Namespace) -> int:
     """Handle status command."""
     api = KnusprAPI()
     
-    if api.is_logged_in():
-        print(f"✓ Logged in (User ID: {api.user_id})")
-        print(f"  Session file: {SESSION_FILE}")
-    else:
-        print("✗ Not logged in")
+    print()
+    print("╔═══════════════════════════════════════════════════════════╗")
+    print("║  🛒 KNUSPR STATUS                                         ║")
+    print("╚═══════════════════════════════════════════════════════════╝")
+    print()
     
+    if api.is_logged_in():
+        print(f"✅ Eingeloggt")
+        print(f"   User ID: {api.user_id}")
+        if api.address_id:
+            print(f"   Adresse ID: {api.address_id}")
+        print(f"   Session: {SESSION_FILE}")
+    else:
+        print("❌ Nicht eingeloggt")
+        print()
+        print("   Führe 'knuspr login' aus um dich einzuloggen.")
+    
+    print()
     return 0
 
 
@@ -542,52 +688,54 @@ def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         prog="knuspr",
-        description="Command-line interface for Knuspr.de online supermarket"
+        description="🛒 Knuspr.de im Terminal — Einkaufen, Suchen, Warenkorb verwalten"
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
     
     # login command
-    login_parser = subparsers.add_parser("login", help="Login to Knuspr.de")
+    login_parser = subparsers.add_parser("login", help="Bei Knuspr.de einloggen")
+    login_parser.add_argument("--email", "-e", help="E-Mail Adresse")
+    login_parser.add_argument("--password", "-p", help="Passwort")
     login_parser.set_defaults(func=cmd_login)
     
     # logout command
-    logout_parser = subparsers.add_parser("logout", help="Logout and clear session")
+    logout_parser = subparsers.add_parser("logout", help="Ausloggen und Session löschen")
     logout_parser.set_defaults(func=cmd_logout)
     
     # status command
-    status_parser = subparsers.add_parser("status", help="Show login status")
+    status_parser = subparsers.add_parser("status", help="Login-Status anzeigen")
     status_parser.set_defaults(func=cmd_status)
     
     # search command
-    search_parser = subparsers.add_parser("search", help="Search for products")
-    search_parser.add_argument("query", help="Search query")
-    search_parser.add_argument("-n", "--limit", type=int, default=10, help="Number of results (default: 10)")
-    search_parser.add_argument("--favorites", action="store_true", help="Only show favorites")
-    search_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    search_parser = subparsers.add_parser("search", help="Produkte suchen")
+    search_parser.add_argument("query", help="Suchbegriff")
+    search_parser.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Ergebnisse (Standard: 10)")
+    search_parser.add_argument("--favorites", action="store_true", help="Nur Favoriten anzeigen")
+    search_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     search_parser.set_defaults(func=cmd_search)
     
     # cart commands
-    cart_parser = subparsers.add_parser("cart", help="Cart operations")
-    cart_subparsers = cart_parser.add_subparsers(dest="cart_command", help="Cart commands")
+    cart_parser = subparsers.add_parser("cart", help="Warenkorb-Operationen")
+    cart_subparsers = cart_parser.add_subparsers(dest="cart_command", help="Warenkorb-Befehle")
     
     # cart show
-    cart_show_parser = cart_subparsers.add_parser("show", help="Show cart contents")
-    cart_show_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    cart_show_parser = cart_subparsers.add_parser("show", help="Warenkorb anzeigen")
+    cart_show_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     cart_show_parser.set_defaults(func=cmd_cart_show)
     
     # cart add
-    cart_add_parser = cart_subparsers.add_parser("add", help="Add product to cart")
-    cart_add_parser.add_argument("product_id", type=int, help="Product ID")
-    cart_add_parser.add_argument("-q", "--quantity", type=int, default=1, help="Quantity (default: 1)")
+    cart_add_parser = cart_subparsers.add_parser("add", help="Produkt hinzufügen")
+    cart_add_parser.add_argument("product_id", type=int, help="Produkt-ID")
+    cart_add_parser.add_argument("-q", "--quantity", type=int, default=1, help="Menge (Standard: 1)")
     cart_add_parser.set_defaults(func=cmd_cart_add)
     
     # cart remove
-    cart_remove_parser = cart_subparsers.add_parser("remove", help="Remove product from cart")
-    cart_remove_parser.add_argument("product_id", help="Product ID or Order Field ID")
+    cart_remove_parser = cart_subparsers.add_parser("remove", help="Produkt entfernen")
+    cart_remove_parser.add_argument("product_id", help="Produkt-ID")
     cart_remove_parser.set_defaults(func=cmd_cart_remove)
     
     # cart open
-    cart_open_parser = cart_subparsers.add_parser("open", help="Open cart in browser")
+    cart_open_parser = cart_subparsers.add_parser("open", help="Warenkorb im Browser öffnen")
     cart_open_parser.set_defaults(func=cmd_cart_open)
     
     # Parse and execute

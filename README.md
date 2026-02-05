@@ -1,109 +1,300 @@
-# Knuspr CLI
+<p align="center">
+  <h1 align="center">🛒 knuspr-cli</h1>
+</p>
 
-Command-line interface for [Knuspr.de](https://www.knuspr.de) online supermarket.
+<p align="center">
+  <strong>Einkaufen bei Knuspr.de — direkt vom Terminal</strong>
+</p>
 
-**Pure Python** - no external dependencies required (stdlib only).
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/dependencies-none-brightgreen.svg" alt="Zero Dependencies">
+</p>
 
-## Installation
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-demo">Demo</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-usage">Usage</a>
+</p>
+
+---
+
+## What is this?
+
+**knuspr-cli** bringt den Knuspr.de Online-Supermarkt ins Terminal. Produkte suchen, Warenkorb verwalten — alles ohne Browser.
+
+Schnell (keine langsamen Web-Apps), hackbar (pipe Produkte in andere Tools, automatisiere deinen Einkauf), und läuft überall mit zero dependencies — nur Python Standard Library.
+
+---
+
+## 🚀 Quick Start
 
 ```bash
-# Clone the repository
+# Mit uvx (empfohlen) — läuft sofort ohne Installation
+uvx --from git+https://github.com/Lars147/knuspr-cli knuspr login
+
+# Einloggen, dann loslegen!
+uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
+```
+
+---
+
+## ✨ Features
+
+| Feature | Beschreibung |
+|---------|-------------|
+| 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
+| 🔍 **Suche** | Produkte durchsuchen mit Filtern |
+| 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
+| ⚡ **JSON Output** | Maschinenlesbare Ausgabe für Scripting |
+| 📦 **Zero Deps** | Nur Python Standard Library, keine Dependencies |
+| 🤖 **AI-Agent Friendly** | Perfekt für Claude, Codex, OpenClaw & andere AI Assistenten |
+
+### Works great with AI Agents
+
+Der CLI-Ansatz macht knuspr-cli ideal für AI Coding Assistenten wie **Claude Code**, **Codex**, oder **OpenClaw**. Text-basierte, strukturierte Befehle und parsierbare Ausgabe ermöglichen es AI Agents, deinen Einkauf einfach zu verwalten.
+
+---
+
+## 🎬 Demo
+
+### Login
+
+```
+$ knuspr login
+
+╔═══════════════════════════════════════════════════════════╗
+║  🛒 KNUSPR LOGIN                                          ║
+╚═══════════════════════════════════════════════════════════╝
+
+📧 E-Mail: user@example.com
+🔑 Passwort: ********
+
+  → Verbinde mit Knuspr.de...
+  → Authentifizierung erfolgreich...
+  → Speichere Session...
+
+✅ Eingeloggt als Max Mustermann (user@example.com)
+   User ID: 123456
+```
+
+### Produkte suchen
+
+```
+$ knuspr search "Champignons" -n 3
+
+🔍 Suche in Knuspr: 'Champignons'
+──────────────────────────────────────────────────
+Gefunden: 3 Produkte
+
+   1. Bio Champignons braun (REWE Bio)
+      💰 2.49 EUR  │  📦 250g  │  ✅
+      ID: 1234567
+
+   2. Champignons weiß (Knuspr)
+      💰 1.99 EUR  │  📦 400g  │  ✅
+      ID: 1234568
+
+   3. Mini Champignons (Gut Bio)
+      💰 2.79 EUR  │  📦 200g  │  ✅
+      ID: 1234569
+```
+
+### Warenkorb anzeigen
+
+```
+$ knuspr cart show
+
+╔═══════════════════════════════════════════════════════════╗
+║  🛒 WARENKORB                                              ║
+╚═══════════════════════════════════════════════════════════╝
+
+📦 Produkte (3):
+
+   • Bio Champignons braun
+     2× 2.49 € = 4.98 €
+     [ID: 1234567]
+
+   • Vollmilch 3.5%
+     1× 1.29 € = 1.29 €
+     [ID: 1234570]
+
+────────────────────────────────────────────────────────────
+   💰 Gesamt: 6.27 EUR
+   ✅ Bestellbereit
+```
+
+---
+
+## 📦 Installation
+
+### Option 1: uvx (empfohlen)
+
+```bash
+# Direkt ausführen — keine Installation nötig
+uvx --from git+https://github.com/Lars147/knuspr-cli knuspr --help
+
+# Oder global installieren
+uv tool install git+https://github.com/Lars147/knuspr-cli
+knuspr --help
+
+# Update auf neueste Version
+uv tool install --upgrade git+https://github.com/Lars147/knuspr-cli
+```
+
+### Option 2: pipx
+
+```bash
+pipx install git+https://github.com/Lars147/knuspr-cli
+knuspr --help
+
+# Update
+pipx install --force git+https://github.com/Lars147/knuspr-cli
+```
+
+### Option 3: Clone the repo
+
+```bash
 git clone https://github.com/Lars147/knuspr-cli.git
 cd knuspr-cli
-
-# Make executable
-chmod +x knuspr_cli.py
-
-# Optional: Create symlink
-ln -s $(pwd)/knuspr_cli.py ~/.local/bin/knuspr
+python3 knuspr_cli.py --help
 ```
 
-## Configuration
+---
 
-Create credentials in one of these locations (checked in order):
+## 📖 Usage
 
-### 1. Environment Variables (recommended for CI/scripts)
+### 🔐 Authentication
+
 ```bash
-export KNUSPR_EMAIL="your@email.com"
-export KNUSPR_PASSWORD="your-password"
+knuspr login                                    # Interaktives Login
+knuspr login --email user@example.com --password secret  # Mit Credentials
+knuspr status                                   # Login-Status prüfen
+knuspr logout                                   # Ausloggen
 ```
 
-### 2. Secrets File (for workspace integration)
-Create `~/.openclaw/workspace/secrets/knuspr.env`:
+### 🔍 Suche
+
 ```bash
-KNUSPR_EMAIL="your@email.com"
-KNUSPR_PASSWORD="your-password"
+knuspr search "Milch"                   # Einfache Suche
+knuspr search "Käse" -n 20              # Mehr Ergebnisse
+knuspr search "Brot" --favorites        # Nur Favoriten
+knuspr search "Obst" --json             # JSON Output
 ```
 
-### 3. Credentials File
-Create `~/.knuspr_credentials.json`:
+### 🛒 Warenkorb
+
+```bash
+knuspr cart show                        # Warenkorb anzeigen
+knuspr cart show --json                 # Als JSON
+knuspr cart add 123456                  # Produkt hinzufügen
+knuspr cart add 123456 -q 3             # 3 Stück hinzufügen
+knuspr cart remove 123456               # Produkt entfernen
+knuspr cart open                        # Im Browser öffnen
+```
+
+---
+
+## ⚙️ Configuration
+
+Credentials können auf verschiedene Weisen bereitgestellt werden (in dieser Reihenfolge geprüft):
+
+### 1. Interaktiv
+
+```bash
+knuspr login
+# → Prompt für E-Mail und Passwort
+```
+
+### 2. Command-line
+
+```bash
+knuspr login --email user@example.com --password secret
+```
+
+### 3. Environment Variables
+
+```bash
+export KNUSPR_EMAIL="user@example.com"
+export KNUSPR_PASSWORD="secret"
+knuspr login
+```
+
+### 4. Secrets File
+
+Erstelle `~/.openclaw/workspace/secrets/knuspr.env`:
+```bash
+KNUSPR_EMAIL="user@example.com"
+KNUSPR_PASSWORD="secret"
+```
+
+### 5. Credentials File
+
+Erstelle `~/.knuspr_credentials.json`:
 ```json
 {
-  "email": "your@email.com",
-  "password": "your-password"
+  "email": "user@example.com",
+  "password": "secret"
 }
 ```
 
-## Usage
+---
 
-### Login
-```bash
-knuspr login                    # Login and save session
-knuspr logout                   # Logout and clear session
-knuspr status                   # Show login status
+## 🔧 How It Works
+
+| Component | Technology |
+|-----------|------------|
+| Authentication | Knuspr/Rohlik REST API |
+| Search | Knuspr Search API |
+| Cart | Knuspr Cart API |
+| Storage | Local JSON session file |
+
+### Files
+
+```
+~/
+├── .knuspr_session.json       # Session cookies
+└── .knuspr_credentials.json   # Optional: gespeicherte Credentials
 ```
 
-### Search Products
-```bash
-knuspr search "Champignons"              # Search for products
-knuspr search "Milch" -n 5               # Limit to 5 results
-knuspr search "Käse" --favorites         # Only favorites
-knuspr search "Brot" --json              # JSON output (for scripts)
-```
+---
 
-### Cart Operations
-```bash
-knuspr cart show                         # Show cart contents
-knuspr cart show --json                  # JSON output
-knuspr cart add 123456                   # Add product by ID
-knuspr cart add 123456 -q 3              # Add 3 units
-knuspr cart remove 123456                # Remove product
-knuspr cart open                         # Open cart in browser
-```
+## 🤝 Contributing
 
-## JSON Output
+Contributions are welcome!
 
-Use `--json` flag for machine-readable output (for integration with other tools):
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/awesome`)
+3. Commit your changes (`git commit -m 'Add awesome feature'`)
+4. Push to the branch (`git push origin feature/awesome`)
+5. Open a Pull Request
 
-```bash
-# Search and pipe to jq
-knuspr search "Tomaten" --json | jq '.[] | select(.in_stock) | .name'
+### Ideas & TODOs
 
-# Get cart total
-knuspr cart show --json | jq '.total_price'
-```
+- [ ] Favorites management
+- [ ] Order history
+- [ ] Delivery slots
+- [ ] Shopping list import from tmx-cli
 
-## Session Management
+---
 
-Sessions are stored in `~/.knuspr_session.json` and reused across commands.
-Run `knuspr logout` to clear the session.
+## ⚠️ Disclaimer
 
-## Integration with tmx-cli
+This is an **unofficial** tool. Knuspr® is a trademark of Rohlik Group.
 
-The `--json` flag enables integration with other tools like tmx-cli:
+This project is not affiliated with, endorsed, or sponsored by Rohlik/Knuspr. Please respect their terms of service.
 
-```bash
-# Future: Import shopping list from Cookidoo
-knuspr import shopping_list.json
-```
+---
 
-## API Reference
+## 📄 License
 
-Based on reverse-engineered Rohlik/Knuspr API. Key endpoints:
-- Login: `POST /services/frontend-service/login`
-- Search: `GET /services/frontend-service/search-metadata`
-- Cart: `GET/POST/DELETE /services/frontend-service/v2/cart`
+MIT © [Lars Heinen](https://github.com/Lars147)
 
-## License
+---
 
-MIT
+<p align="center">
+  <sub>Made with ❤️ for people who prefer terminals over browsers</sub>
+</p>
