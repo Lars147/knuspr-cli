@@ -1311,7 +1311,11 @@ def cmd_orders(args: argparse.Namespace) -> int:
                 
                 # Get price from various possible locations
                 price_comp = order.get("priceComposition", {})
-                price = price_comp.get("total") or order.get("totalPrice") or order.get("price") or 0
+                total_obj = price_comp.get("total", {})
+                if isinstance(total_obj, dict):
+                    price = total_obj.get("amount", 0)
+                else:
+                    price = total_obj or order.get("totalPrice") or order.get("price") or 0
                 
                 items_count = order.get("itemsCount") or 0
                 
@@ -1363,7 +1367,11 @@ def cmd_order_detail(args: argparse.Namespace) -> int:
             
             status = order.get("status") or "Unbekannt"
             date = order.get("deliveredAt") or order.get("createdAt") or ""
-            total_price = order.get("totalPrice") or order.get("price") or 0
+            total_price_raw = order.get("totalPrice") or order.get("price") or 0
+            if isinstance(total_price_raw, dict):
+                total_price = total_price_raw.get("amount", 0)
+            else:
+                total_price = total_price_raw
             
             print(f"   📊 Status: {status}")
             print(f"   📅 Datum: {format_date(date)}")
@@ -1377,7 +1385,8 @@ def cmd_order_detail(args: argparse.Namespace) -> int:
                 for p in products:
                     name = p.get("productName") or p.get("name") or "Unbekannt"
                     qty = p.get("quantity") or 1
-                    price = p.get("price") or p.get("totalPrice") or 0
+                    price_raw = p.get("price") or p.get("totalPrice") or 0
+                    price = price_raw.get("amount", 0) if isinstance(price_raw, dict) else price_raw
                     print(f"      • {name}")
                     print(f"        {qty}× | {format_price(price)}")
                     print()
