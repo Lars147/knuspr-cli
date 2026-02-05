@@ -1207,7 +1207,8 @@ def cmd_slots(args: argparse.Namespace) -> int:
             return 0
         
         # Show days with their slots
-        for day_info in all_days[:5]:  # Limit to 5 days
+        max_days = 10 if args.detailed else 5
+        for day_info in all_days[:max_days]:
             date = day_info["date"]
             label = day_info["label"]
             slots = day_info["slots"]
@@ -1219,15 +1220,15 @@ def cmd_slots(args: argparse.Namespace) -> int:
             
             # Show slots based on --detailed flag
             if args.detailed:
-                # Show all slots including 15-min ON_TIME slots
-                display_slots = sorted(slots, key=lambda s: s.get("since", ""))[:16]
+                # Show all slots including 15-min ON_TIME slots (no limit)
+                display_slots = sorted(slots, key=lambda s: s.get("since", ""))
             else:
                 # Show only VIRTUAL slots (1-hour windows)
                 display_slots = [s for s in slots if s.get("type") == "VIRTUAL"]
                 if not display_slots:
                     display_slots = slots[:12]  # Fallback
             
-            for slot in display_slots[:16]:
+            for slot in display_slots:
                 time_window = slot.get("timeWindow", "")
                 price = slot.get("price", 0)
                 capacity = slot.get("capacity", "")
@@ -1255,7 +1256,7 @@ def cmd_slots(args: argparse.Namespace) -> int:
             
             print()
         
-        remaining_days = len(all_days) - 5
+        remaining_days = len(all_days) - max_days
         if remaining_days > 0:
             print(f"   ... und {remaining_days} weitere Tage verfügbar")
             print()
