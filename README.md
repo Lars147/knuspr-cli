@@ -48,7 +48,7 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 |---------|-------------|
 | 🎯 **Setup** | Interaktives Onboarding — Bio-Präferenz, Sortierung, Ausschlüsse |
 | 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
-| 🔍 **Suche** | Produkte durchsuchen mit Filtern |
+| 🔍 **Suche** | Produkte durchsuchen, Filter für **Rette Lebensmittel** |
 | 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
 | 📦 **Lieferung** | Lieferzeitfenster, Slots, **Slot-Reservierung** |
 | 📋 **Bestellungen** | Bestellhistorie und Details |
@@ -198,6 +198,10 @@ knuspr search "Milch"                   # Einfache Suche
 knuspr search "Käse" -n 20              # Mehr Ergebnisse
 knuspr search "Brot" --favorites        # Nur Favoriten
 knuspr search "Obst" --json             # JSON Output
+
+# Rette Lebensmittel (bald ablaufend, reduziert)
+knuspr search "Milch" --expiring        # Nur "Rette Lebensmittel"
+knuspr search "Fisch" --rette           # Alias für --expiring
 ```
 
 ### 🛒 Warenkorb
