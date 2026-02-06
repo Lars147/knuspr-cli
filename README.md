@@ -372,7 +372,7 @@ MIT
 
 ## 👤 Autor
 
-Lars Wächter
+Lars Heinen
 
 ---
 
