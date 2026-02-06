@@ -2534,7 +2534,7 @@ def cmd_product(args: argparse.Namespace) -> int:
             print(f"   🔗 Produkt-ID: {product.get('id')}")
             slug = product.get("slug")
             if slug:
-                print(f"   🌐 https://www.knuspr.de/{slug}/{product.get('id')}")
+                print(f"   🌐 https://www.knuspr.de/{product.get('id')}-{slug}")
             print()
         
         return 0
