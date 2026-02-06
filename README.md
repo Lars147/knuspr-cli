@@ -1,269 +1,379 @@
-<p align="center">
-  <h1 align="center">🛒 knuspr-cli</h1>
-</p>
+# 🛒 Knuspr CLI
 
-<p align="center">
-  <strong>Einkaufen bei Knuspr.de — direkt vom Terminal</strong>
-</p>
+> **⚠️ Hobby-Projekt Disclaimer**
+> 
+> Dies ist ein privates Hobby-Projekt und steht in keiner Verbindung zu Knuspr/Rohlik.
+> Die CLI nutzt keine offizielle API — Änderungen seitens Knuspr können jederzeit zu
+> Funktionseinschränkungen führen. Nutzung auf eigene Verantwortung.
 
-<p align="center">
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/dependencies-keine-brightgreen.svg" alt="Keine Dependencies">
-</p>
+REST-ähnliche, AI-Agent-freundliche CLI für [Knuspr.de](https://www.knuspr.de).
 
----
+Einkaufen, Suchen, Warenkorb verwalten, Lieferzeiten, Bestellhistorie — alles vom Terminal aus.
 
-## Was ist das?
+## ✨ Features
 
-**knuspr-cli** bringt den Knuspr.de Online-Supermarkt ins Terminal. Produkte suchen, Warenkorb verwalten, Lieferslots reservieren — alles ohne Browser.
+- 🔐 **Authentifizierung** — Sichere Session-Speicherung
+- 🔍 **Produktsuche** — Mit Filtern (Bio, Favoriten, Rette Lebensmittel)
+- 🛒 **Warenkorb** — Anzeigen, hinzufügen, entfernen, leeren
+- 📅 **Lieferzeitfenster** — Anzeigen und reservieren
+- 📋 **Bestellhistorie** — Ansehen und wiederholen
+- ⭐ **Favoriten** — Verwalten
+- 🥬 **Rette Lebensmittel** — Reduzierte Produkte kurz vor Ablauf
+- 📊 **JSON-Output** — Für Automatisierung und AI-Agents
+- 🐚 **Shell-Completion** — Bash, Zsh, Fish
 
-- **Schnell** — keine langsamen Web-Apps
-- **Hackbar** — pipe Produkte in andere Tools, automatisiere deinen Einkauf
-- **Portabel** — läuft überall, nur Python Standard Library (keine Dependencies)
-
-> ⚠️ **Hinweis:** Dies ist ein Hobby-Projekt für die persönliche Nutzung. Nicht offiziell mit Knuspr.de verbunden oder von Knuspr.de unterstützt.
-
----
-
-## Schnellstart
+## 📦 Installation
 
 ```bash
-# Mit uvx (empfohlen) — läuft sofort ohne Installation
-uvx --from git+https://github.com/Lars147/knuspr-cli knuspr login
-
-# Einloggen, dann loslegen
-uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
-```
-
----
-
-## Features
-
-| Feature | Beschreibung |
-|---------|-------------|
-| 🎯 **Setup** | Interaktives Onboarding — Bio-Präferenz, Sortierung, Ausschlüsse |
-| 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
-| 🔍 **Suche** | Produkte durchsuchen mit Filtern (Bio, Favoriten, Rette) |
-| 🔧 **Filter** | Dynamische Filter pro Suche erkunden |
-| 📦 **Produkt** | Detaillierte Produktinformationen |
-| ⭐ **Favoriten** | Favoriten anzeigen, hinzufügen, entfernen |
-| 🥬 **Rette** | Alle Rette-Lebensmittel (bald ablaufend, reduziert) |
-| 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
-| 📅 **Lieferslots** | Zeitfenster anzeigen und **reservieren** |
-| 📋 **Bestellungen** | Bestellhistorie und Details |
-| 👤 **Account** | Account-Info, Premium-Status |
-| ⚡ **Completion** | Tab-Completion für Bash, Zsh, Fish |
-| 🍽️ **Mahlzeiten** | Mahlzeitvorschläge nach Kategorie |
-| ⚡ **JSON** | Maschinenlesbare Ausgabe für Scripting |
-
----
-
-## Installation
-
-### Option 1: uvx (empfohlen)
-
-```bash
-# Direkt ausführen — keine Installation nötig
-uvx --from git+https://github.com/Lars147/knuspr-cli knuspr --help
-
-# Oder global installieren
-uv tool install git+https://github.com/Lars147/knuspr-cli
-knuspr --help
-
-# Update
-uv tool install --upgrade git+https://github.com/Lars147/knuspr-cli
-```
-
-### Option 2: pipx
-
-```bash
-pipx install git+https://github.com/Lars147/knuspr-cli
-knuspr --help
-```
-
-### Option 3: Repository klonen
-
-```bash
+# Repository klonen
 git clone https://github.com/Lars147/knuspr-cli.git
 cd knuspr-cli
-python3 knuspr_cli.py --help
+
+# Ausführbar machen
+chmod +x knuspr_cli.py
+
+# Option A: Alias setzen (in ~/.bashrc oder ~/.zshrc)
+alias knuspr="python3 /pfad/zu/knuspr_cli.py"
+
+# Option B: Ins PATH kopieren
+sudo cp knuspr_cli.py /usr/local/bin/knuspr
 ```
 
----
+**Voraussetzungen:** Python 3.8+ (keine externen Dependencies!)
 
-## Verwendung
+## 🏗️ Command-Struktur
 
-### Setup & Login
+Die CLI folgt einem REST-ähnlichen Pattern: `knuspr <ressource> <aktion>`
 
-```bash
-knuspr setup                    # Interaktives Onboarding (Bio, Sortierung, Ausschlüsse)
-knuspr login                    # Einloggen
-knuspr status                   # Login-Status prüfen
-knuspr logout                   # Ausloggen
+```
+knuspr
+├── auth        Authentifizierung
+│   ├── login       Bei Knuspr.de einloggen
+│   ├── logout      Ausloggen und Session löschen
+│   └── status      Login-Status anzeigen
+│
+├── config      Konfiguration
+│   ├── show        Konfiguration anzeigen
+│   ├── set         Präferenzen interaktiv setzen
+│   └── reset       Zurücksetzen
+│
+├── account     Account-Informationen
+│   └── show        Premium-Status, Mehrwegtaschen, etc.
+│
+├── product     Produkte
+│   ├── search      Produkte suchen
+│   ├── show        Produkt-Details anzeigen
+│   ├── filters     Verfügbare Filter anzeigen
+│   └── rette       Rette Lebensmittel anzeigen
+│
+├── favorite    Favoriten
+│   ├── list        Alle Favoriten anzeigen
+│   ├── add         Produkt zu Favoriten hinzufügen
+│   └── remove      Produkt aus Favoriten entfernen
+│
+├── cart        Warenkorb
+│   ├── show        Warenkorb anzeigen
+│   ├── add         Produkt hinzufügen
+│   ├── remove      Produkt entfernen
+│   ├── clear       Warenkorb leeren
+│   └── open        Im Browser öffnen
+│
+├── slot        Lieferzeitfenster
+│   ├── list        Verfügbare Zeitfenster anzeigen
+│   ├── reserve     Zeitfenster reservieren
+│   ├── release     Reservierung stornieren
+│   └── current     Aktuelle Reservierung anzeigen
+│
+├── order       Bestellungen
+│   ├── list        Bestellhistorie anzeigen
+│   ├── show        Details einer Bestellung
+│   └── repeat      Bestellung wiederholen (in Warenkorb)
+│
+├── insight     Einkaufs-Insights
+│   ├── frequent    Häufig gekaufte Produkte
+│   └── meals       Mahlzeitvorschläge (breakfast, lunch, etc.)
+│
+├── delivery    Lieferinformationen
+│   └── show        Liefergebühren & bevorstehende Lieferungen
+│
+└── completion  Shell-Completion
+    ├── bash        Bash Completion ausgeben
+    ├── zsh         Zsh Completion ausgeben
+    └── fish        Fish Completion ausgeben
 ```
 
-### Suche
+## 🚀 Schnellstart
 
 ```bash
-knuspr search "Milch"           # Einfache Suche
-knuspr search "Käse" -n 20      # Mehr Ergebnisse
-knuspr search "Brot" --favorites  # Nur Favoriten
-knuspr search "Milch" --bio     # Nur Bio-Produkte
-knuspr search "Obst" --json     # JSON Output
+# 1. Einloggen
+knuspr auth login
+
+# 2. Produkte suchen
+knuspr product search "Milch"
+
+# 3. Produkt zum Warenkorb hinzufügen (ID aus Suche)
+knuspr cart add 11943
+
+# 4. Warenkorb prüfen
+knuspr cart show
+
+# 5. Lieferzeitfenster anzeigen
+knuspr slot list
+
+# 6. Slot reservieren (ID aus Liste)
+knuspr slot reserve 110425
+
+# 7. Im Browser zur Kasse
+knuspr cart open
 ```
 
-### Filter erkunden
+## 📖 Befehle im Detail
 
-Knuspr generiert **alle Filter dynamisch** basierend auf den Suchergebnissen. Ein Filter erscheint nur, wenn es passende Produkte gibt:
+### 🔐 auth — Authentifizierung
 
 ```bash
-knuspr filters "brot"           # Verfügbare Filter für "brot"
-knuspr filters "katzenfutter"   # Andere Filter als bei "brot"!
+knuspr auth login                              # Interaktiv einloggen
+knuspr auth login -e user@mail.de -p geheim    # Mit Credentials
+knuspr auth logout                             # Session löschen
+knuspr auth status                             # Login-Status anzeigen
+knuspr auth                                    # Default: status
 ```
 
-Typische Filter-Gruppen:
-- **Bio:** `b-i-o:bio-items` (nur wenn Bio-Produkte existieren)
-- **Ernährung:** `diet:vegetarian-items`, `diet:glutenfree-items`
-- **Kategorie:** `kategorie:480-brot-gebaeck`
-- **Marke:** `marke:alnatura`, `marke:harry`
-
-Der `--bio` Flag filtert nach Bio-Badge. Wenn keine Bio-Produkte für deine Suche existieren, ist das Ergebnis leer.
-
-### Rette Lebensmittel
-
-Produkte die bald ablaufen — reduziert, gegen Verschwendung:
+### ⚙️ config — Konfiguration
 
 ```bash
-knuspr rette                    # Alle Rette-Produkte
-knuspr rette "Krapfen"          # Filtern
-knuspr search "X" --expiring    # Suche + Badge-Filter
+knuspr config show                   # Aktuelle Konfiguration anzeigen
+knuspr config set                    # Präferenzen interaktiv setzen
+knuspr config reset                  # Konfiguration zurücksetzen
+knuspr config                        # Default: show
 ```
 
-### Produkt-Details
+**Konfigurierbare Präferenzen:**
+- 🌿 Bio-Produkte bevorzugen
+- 📊 Standard-Sortierung (Relevanz, Preis, Bewertung)
+- 🚫 Ausschlüsse (z.B. "Laktose", "Gluten", "Schwein")
+
+### 👤 account — Account-Informationen
 
 ```bash
-knuspr product 5273             # Produkt-Details
-knuspr product 5273 --json      # Als JSON
+knuspr account show                  # Premium-Status, Mehrwegtaschen, etc.
+knuspr account                       # Default: show
 ```
 
-### Favoriten
+### 📦 product — Produkte
 
 ```bash
-knuspr favorites                # Alle Favoriten
-knuspr favorites add 123456     # Hinzufügen
-knuspr favorites remove 123456  # Entfernen
+# Suchen
+knuspr product search "Milch"                  # Einfache Suche
+knuspr product search "Käse" -n 20             # Max. 20 Ergebnisse
+knuspr product search "Tofu" --bio             # Nur Bio-Produkte
+knuspr product search "Brot" --favorites       # Nur Favoriten
+knuspr product search "Joghurt" --rette        # Nur Rette Lebensmittel
+knuspr product search "Wurst" --exclude Schwein  # Begriffe ausschließen
+
+# Sortierung
+knuspr product search "Milch" --sort price_asc   # Günstigste zuerst
+knuspr product search "Milch" --sort price_desc  # Teuerste zuerst
+
+# Produkt-Details
+knuspr product show 11943                      # Details zu Produkt-ID
+
+# Verfügbare Filter
+knuspr product filters "Milch"                 # Filter-Optionen anzeigen
+
+# Rette Lebensmittel (reduziert, kurz vor Ablauf)
+knuspr product rette                           # Alle anzeigen
+knuspr product rette "Fleisch"                 # Nach Begriff filtern
+knuspr product rette -n 10                     # Max. 10 Ergebnisse
 ```
 
-### Warenkorb
+### ⭐ favorite — Favoriten
 
 ```bash
-knuspr cart show                # Warenkorb anzeigen
-knuspr cart add 123456          # Produkt hinzufügen
-knuspr cart add 123456 -q 3     # 3 Stück hinzufügen
-knuspr cart remove 123456       # Entfernen
-knuspr cart open                # Im Browser öffnen
+knuspr favorite list                 # Alle Favoriten anzeigen
+knuspr favorite list -n 20           # Max. 20 anzeigen
+knuspr favorite add 11943            # Produkt zu Favoriten
+knuspr favorite remove 11943         # Aus Favoriten entfernen
+knuspr favorite                      # Default: list
 ```
 
-### Lieferung & Slot-Reservierung
+### 🛒 cart — Warenkorb
 
 ```bash
-knuspr slots                    # Verfügbare Zeitfenster
-knuspr slots --detailed         # Mit 15-Minuten Slots + IDs
-knuspr delivery                 # Aktuelle Lieferinfos
-
-# Slot reservieren (60 Minuten gültig)
-knuspr slot reserve 262025      # Slot-ID aus --detailed
-knuspr slot status              # Reservierung anzeigen
-knuspr slot cancel              # Reservierung stornieren
+knuspr cart show                     # Warenkorb anzeigen
+knuspr cart add 11943                # 1× Produkt hinzufügen
+knuspr cart add 11943 -q 3           # 3× Produkt hinzufügen
+knuspr cart remove 11943             # Produkt entfernen
+knuspr cart clear                    # Kompletten Warenkorb leeren
+knuspr cart open                     # Warenkorb im Browser öffnen
+knuspr cart                          # Default: show
 ```
 
-### Bestellungen
+### 📅 slot — Lieferzeitfenster
 
 ```bash
-knuspr orders                   # Bestellhistorie
-knuspr order 12345678           # Details einer Bestellung
+knuspr slot list                     # Verfügbare Zeitfenster
+knuspr slot list -n 7                # Mehr Tage anzeigen
+knuspr slot list --detailed          # Mit 15-Min-Slots und IDs
+
+knuspr slot reserve 110425           # Slot reservieren (15-Min-Präzision)
+knuspr slot reserve 110425 --type VIRTUAL  # 1-Stunden-Fenster
+
+knuspr slot current                  # Aktuelle Reservierung anzeigen
+knuspr slot release                  # Reservierung stornieren
+knuspr slot                          # Default: list
 ```
 
-### Account & mehr
+### 📋 order — Bestellungen
 
 ```bash
-knuspr account                  # Account-Info, Premium-Status
-knuspr frequent                 # Häufig gekaufte Produkte
-knuspr meals breakfast          # Frühstücks-Vorschläge
-knuspr meals lunch              # Mittagessen
-knuspr meals dinner             # Abendessen
+knuspr order list                    # Bestellhistorie
+knuspr order list -n 20              # Mehr Bestellungen anzeigen
+knuspr order show 1011234895         # Details einer Bestellung
+knuspr order repeat 1011234895       # Alle Produkte in Warenkorb legen
+knuspr order                         # Default: list
 ```
 
-### Shell-Completion
+### 📊 insight — Einkaufs-Insights
 
 ```bash
-# Bash (zu ~/.bashrc hinzufügen)
-eval "$(knuspr completion bash)"
+# Häufig gekaufte Produkte
+knuspr insight frequent              # Top 10 aus letzten 5 Bestellungen
+knuspr insight frequent -n 20        # Top 20 anzeigen
+knuspr insight frequent -o 10        # Mehr Bestellungen analysieren
 
-# Zsh (zu ~/.zshrc hinzufügen)
-eval "$(knuspr completion zsh)"
+# Mahlzeitvorschläge basierend auf Kaufhistorie
+knuspr insight meals breakfast       # Frühstücks-Produkte
+knuspr insight meals lunch           # Mittagessen
+knuspr insight meals dinner          # Abendessen
+knuspr insight meals snack           # Snacks
+knuspr insight meals baking          # Backzutaten
+knuspr insight meals drinks          # Getränke
+knuspr insight meals healthy         # Gesunde Produkte
 
-# Fish (einmalig ausführen)
+knuspr insight                       # Default: frequent
+```
+
+### 🚚 delivery — Lieferinformationen
+
+```bash
+knuspr delivery show                 # Liefergebühren, bevorstehende Bestellungen
+knuspr delivery                      # Default: show
+```
+
+### 🐚 completion — Shell-Completion
+
+```bash
+# Bash (in ~/.bashrc einfügen)
+knuspr completion bash >> ~/.bashrc
+source ~/.bashrc
+
+# Zsh (in ~/.zshrc einfügen)
+knuspr completion zsh >> ~/.zshrc
+source ~/.zshrc
+
+# Fish
 knuspr completion fish > ~/.config/fish/completions/knuspr.fish
 ```
 
----
+## 📊 JSON-Ausgabe
 
-## Konfiguration
-
-Credentials können auf verschiedene Weisen bereitgestellt werden:
-
-### 1. Interaktiv
+Alle Befehle unterstützen `--json` für maschinenlesbare Ausgabe:
 
 ```bash
-knuspr login
-# → Prompt für E-Mail und Passwort
+knuspr auth status --json
+knuspr product search "Milch" --json
+knuspr cart show --json
+knuspr order list --json
+knuspr slot list --json
 ```
 
-### 2. Command-line
+## 🔑 Credentials einrichten
+
+### Option 1: Interaktiv (empfohlen)
 
 ```bash
-knuspr login --email user@example.com --password secret
+knuspr auth login
+# → E-Mail und Passwort werden abgefragt
 ```
 
-### 3. Environment Variables
+### Option 2: Umgebungsvariablen
 
 ```bash
 export KNUSPR_EMAIL="user@example.com"
-export KNUSPR_PASSWORD="secret"
-knuspr login
+export KNUSPR_PASSWORD="geheim"
+knuspr auth login
 ```
 
-### 4. Credentials-Datei
+### Option 3: Credentials-Datei
 
-Erstelle `~/.knuspr_credentials.json`:
-```json
+```bash
+cat > ~/.knuspr_credentials.json << 'EOF'
 {
   "email": "user@example.com",
-  "password": "secret"
+  "password": "geheim"
 }
+EOF
+chmod 600 ~/.knuspr_credentials.json
+knuspr auth login
 ```
+
+## 🤖 Beispiele für AI-Agents
+
+```bash
+# Produkt-ID aus Suche extrahieren
+knuspr product search "Bio Hafermilch" --json | jq '.[0].id'
+
+# Erstes Suchergebnis zum Warenkorb hinzufügen
+knuspr cart add $(knuspr product search "Bio Hafermilch" --json | jq -r '.[0].id')
+
+# Warenkorb-Summe auslesen
+knuspr cart show --json | jq '.total_price'
+
+# Nächsten verfügbaren Slot finden und reservieren
+knuspr slot list --detailed --json | jq '.[0].availabilityDays[0].slots | to_entries[0].value[0].slotId'
+
+# Letzte Bestellung wiederholen
+knuspr order repeat $(knuspr order list --json | jq -r '.[0].id')
+
+# Alle Rette-Lebensmittel mit >40% Rabatt
+knuspr product rette --json | jq '[.[] | select(.discount | test("-[4-9][0-9]"))]'
+
+# Häufig gekaufte Produkte als Einkaufsliste
+knuspr insight frequent --json | jq '.top_items | .[].product_name'
+
+# Frühstücks-Empfehlungen basierend auf Kaufhistorie
+knuspr insight meals breakfast --json | jq '.suggestions[:5]'
+```
+
+## 🔢 Exit-Codes
+
+| Code | Bedeutung |
+|------|-----------|
+| `0`  | ✅ Erfolg |
+| `1`  | ❌ Allgemeiner Fehler |
+| `2`  | 🔐 Authentifizierungsfehler |
+
+## 📁 Dateien
+
+| Datei | Beschreibung |
+|-------|--------------|
+| `~/.knuspr_session.json` | Session-Cookies (automatisch verwaltet) |
+| `~/.knuspr_credentials.json` | Gespeicherte Login-Daten (optional) |
+| `~/.knuspr_config.json` | Benutzer-Präferenzen |
+
+## 🛠️ Abhängigkeiten
+
+**Keine!** Nur Python 3.8+ und die Standardbibliothek.
+
+## 📜 Lizenz
+
+MIT
+
+## 👤 Autor
+
+Lars Wächter
 
 ---
 
-## Dateien
-
-```
-~/
-├── .knuspr_session.json       # Session-Cookies
-├── .knuspr_credentials.json   # Gespeicherte Credentials (optional)
-└── .knuspr_config.json        # Setup-Präferenzen (optional)
-```
-
----
-
-## Lizenz
-
-MIT © [Lars Heinen](https://github.com/Lars147)
-
----
-
-<p align="center">
-  <sub>Für alle, die lieber tippen als klicken 🖥️</sub>
-</p>
+> 💡 **Tipp:** Nutze `knuspr <command> --help` für detaillierte Hilfe zu jedem Befehl.
