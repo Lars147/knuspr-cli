@@ -266,25 +266,24 @@ class KnusprAPI:
             limit: Maximum results
             favorites_only: Only show favorites
             expiring_only: Only show "Rette Lebensmittel" (expiring soon)
-            bio_only: Only show BIO products (uses native API filter)
+            bio_only: Only show BIO products (badge-based filter)
         """
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
-        # For expiring filter, request more results to filter from
-        request_limit = limit + 50 if expiring_only else limit + 5
+        # For badge-based filters, request more results to filter from
+        needs_extra = expiring_only or bio_only
+        request_limit = limit + 50 if needs_extra else limit + 5
         
-        # Build filters list
-        filters = []
-        if bio_only:
-            filters.append("b-i-o:bio-items")
+        # API filters (currently not working reliably, kept for future)
+        api_filters = []
         
         params = urllib.parse.urlencode({
             "search": query,
             "offset": "0",
             "limit": str(request_limit),
             "companyId": "1",
-            "filterData": json.dumps({"filters": filters}),
+            "filterData": json.dumps({"filters": api_filters}),
             "canCorrect": "true"
         })
         
@@ -307,6 +306,16 @@ class KnusprAPI:
                 p for p in products
                 if any(
                     badge.get("slug") == "expiring" or badge.get("type") == "EXPIRING"
+                    for badge in p.get("badge", [])
+                )
+            ]
+        
+        # Filter BIO products (badge-based)
+        if bio_only:
+            products = [
+                p for p in products
+                if any(
+                    badge.get("slug") == "bio" or badge.get("type") == "bio"
                     for badge in p.get("badge", [])
                 )
             ]
@@ -577,6 +586,51 @@ class KnusprAPI:
             method="DELETE"
         )
         return True
+    
+    def get_available_filters(self, query: str) -> list[dict[str, Any]]:
+        """Get available filters for a search query.
+        
+        Knuspr generates filters dynamically based on the search results.
+        This returns what filters can be applied to narrow down the search.
+        
+        Args:
+            query: Search term
+            
+        Returns:
+            List of filter groups with their options
+        """
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        body = {
+            "search": query,
+            "warehouseId": 10000,
+            "isFuzzy": False,
+            "type": "PRODUCT",
+            "filters": []
+        }
+        
+        response = self._make_request("/api/v1/filters/search", method="POST", data=body)
+        
+        filter_groups = []
+        for group in response.get("filterGroups", []):
+            options = []
+            for opt in group.get("options", []):
+                options.append({
+                    "title": opt.get("title"),
+                    "key": opt.get("key"),
+                    "value": opt.get("value"),
+                    "filter_string": f"{opt.get('key')}:{opt.get('value')}",
+                    "count": opt.get("matchingProductCount"),
+                })
+            
+            filter_groups.append({
+                "tag": group.get("tag"),
+                "title": group.get("title"),
+                "options": options,
+            })
+        
+        return filter_groups
     
     def get_product_details(self, product_id: int) -> dict[str, Any]:
         """Get detailed product information.
@@ -1091,7 +1145,7 @@ def cmd_search(args: argparse.Namespace) -> int:
             limit=args.limit,
             favorites_only=args.favorites,
             expiring_only=expiring_only,
-            bio_only=prefer_bio  # Use native API filter for BIO
+            bio_only=prefer_bio
         )
         
         exclusions = getattr(args, 'exclude', None)
@@ -1137,7 +1191,7 @@ def cmd_search(args: argparse.Namespace) -> int:
             
             print(f"Gefunden: {len(results)} Produkte")
             if prefer_bio:
-                print("   🌿 Nur Bio-Produkte (API-Filter)")
+                print("   🌿 Nur Bio-Produkte")
             print()
             
             for i, p in enumerate(results, 1):
@@ -2528,6 +2582,70 @@ def cmd_product(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_filters(args: argparse.Namespace) -> int:
+    """Handle filters command - show available filters for a search."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        filter_groups = api.get_available_filters(args.query)
+        
+        if args.json:
+            print(json.dumps(filter_groups, indent=2, ensure_ascii=False))
+            return 0
+        
+        print()
+        print(f"🔍 Verfügbare Filter für: '{args.query}'")
+        print("─" * 50)
+        print()
+        print("Filter können mit --filter \"key:value\" verwendet werden.")
+        print("Mehrere Filter: --filter \"key1:value1\" --filter \"key2:value2\"")
+        print()
+        
+        for group in filter_groups:
+            title = group.get("title") or group.get("tag", "").upper()
+            options = group.get("options", [])
+            
+            if not options:
+                continue
+            
+            print(f"📁 {title}")
+            
+            # Show max 8 options per group, with counts if available
+            for opt in options[:8]:
+                name = opt.get("title")
+                filter_str = opt.get("filter_string")
+                count = opt.get("count")
+                
+                if count:
+                    print(f"     {name} ({count})")
+                else:
+                    print(f"     {name}")
+                print(f"       └─ --filter \"{filter_str}\"")
+            
+            if len(options) > 8:
+                print(f"     ... und {len(options) - 8} weitere")
+            print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
 def cmd_rette(args: argparse.Namespace) -> int:
     """Handle rette command - show all Rette Lebensmittel products."""
     api = KnusprAPI()
@@ -2967,7 +3085,7 @@ _knuspr_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="login logout status setup search product favorites rette cart slots slot delivery orders order account frequent meals completion"
+    local commands="login logout status setup search product filters favorites rette cart slots slot delivery orders order account frequent meals completion"
     local cart_cmds="show add remove open"
     local slot_cmds="reserve status cancel"
     local favorites_cmds="list add remove"
@@ -3055,6 +3173,7 @@ _knuspr() {
                 'status:Login-Status anzeigen'
                 'setup:Präferenzen einrichten'
                 'search:Produkte suchen'
+                'filters:Verfügbare Filter anzeigen'
                 'product:Produktdetails anzeigen'
                 'favorites:Favoriten verwalten'
                 'rette:Rette-Lebensmittel anzeigen'
@@ -3179,7 +3298,7 @@ compdef _knuspr knuspr
 FISH_COMPLETION = '''
 # knuspr completions for fish
 
-set -l commands login logout status setup search product favorites rette cart slots slot delivery orders order account frequent meals completion
+set -l commands login logout status setup search filters product favorites rette cart slots slot delivery orders order account frequent meals completion
 set -l cart_cmds show add remove open
 set -l slot_cmds reserve status cancel
 set -l favorites_cmds list add remove
@@ -3190,6 +3309,7 @@ complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "logout" -d
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Login-Status"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "setup" -d "Präferenzen einrichten"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Produkte suchen"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "filters" -d "Verfügbare Filter"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "product" -d "Produktdetails"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "favorites" -d "Favoriten verwalten"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "rette" -d "Rette-Lebensmittel"
@@ -3310,8 +3430,8 @@ def main() -> int:
     search_parser.add_argument("--favorites", action="store_true", help="Nur Favoriten anzeigen")
     search_parser.add_argument("--expiring", "--rette", action="store_true", 
                                help="Nur 'Rette Lebensmittel' (bald ablaufend, reduziert)")
-    search_parser.add_argument("--bio", action="store_true", dest="bio", default=None, help="Bio-Produkte bevorzugen")
-    search_parser.add_argument("--no-bio", action="store_false", dest="bio", help="Bio-Präferenz deaktivieren")
+    search_parser.add_argument("--bio", action="store_true", dest="bio", default=None, help="Nur Bio-Produkte")
+    search_parser.add_argument("--no-bio", action="store_false", dest="bio", help="Bio-Filter deaktivieren")
     search_parser.add_argument("--sort", choices=["relevance", "price_asc", "price_desc", "rating"], help="Sortierung")
     search_parser.add_argument("--exclude", nargs="*", help="Begriffe ausschließen")
     search_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
@@ -3406,6 +3526,12 @@ def main() -> int:
     product_parser.add_argument("product_id", help="Produkt-ID")
     product_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     product_parser.set_defaults(func=cmd_product)
+    
+    # filters command
+    filters_parser = subparsers.add_parser("filters", help="Verfügbare Filter für eine Suche anzeigen")
+    filters_parser.add_argument("query", help="Suchbegriff")
+    filters_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    filters_parser.set_defaults(func=cmd_filters)
     
     # rette command
     rette_parser = subparsers.add_parser("rette", help="Alle 'Rette Lebensmittel' anzeigen (bald ablaufend)")

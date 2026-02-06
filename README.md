@@ -44,7 +44,8 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 |---------|-------------|
 | 🎯 **Setup** | Interaktives Onboarding — Bio-Präferenz, Sortierung, Ausschlüsse |
 | 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
-| 🔍 **Suche** | Produkte durchsuchen mit Filtern |
+| 🔍 **Suche** | Produkte durchsuchen mit Filtern (Bio, Favoriten, Rette) |
+| 🔧 **Filter** | Dynamische Filter pro Suche erkunden |
 | 📦 **Produkt** | Detaillierte Produktinformationen |
 | ⭐ **Favoriten** | Favoriten anzeigen, hinzufügen, entfernen |
 | 🥬 **Rette** | Alle Rette-Lebensmittel (bald ablaufend, reduziert) |
@@ -108,8 +109,25 @@ knuspr logout                   # Ausloggen
 knuspr search "Milch"           # Einfache Suche
 knuspr search "Käse" -n 20      # Mehr Ergebnisse
 knuspr search "Brot" --favorites  # Nur Favoriten
+knuspr search "Milch" --bio     # Nur Bio-Produkte
 knuspr search "Obst" --json     # JSON Output
 ```
+
+### Filter erkunden
+
+Knuspr generiert Filter dynamisch basierend auf deiner Suche. Mit `knuspr filters` siehst du, welche Filter für einen Suchbegriff verfügbar sind:
+
+```bash
+knuspr filters "brot"           # Verfügbare Filter anzeigen
+```
+
+Ausgabe zeigt z.B.:
+- **Bio:** `b-i-o:bio-items`, `b-i-o:bio-demeter-items`
+- **Ernährung:** `diet:vegetarian-items`, `diet:glutenfree-items`
+- **Kategorie:** `kategorie:480-brot-gebaeck`
+- **Marke:** `marke:alnatura`, `marke:harry`
+
+> **Hinweis:** Aktuell ist `--bio` der einzige voll unterstützte Filter. Andere Filter können mit `knuspr filters` erkundet werden — die API-Integration dafür ist noch in Arbeit.
 
 ### Rette Lebensmittel
 
