@@ -574,6 +574,111 @@ class KnusprAPI:
         )
         return True
     
+    def get_product_details(self, product_id: int) -> dict[str, Any]:
+        """Get detailed product information.
+        
+        Args:
+            product_id: The product ID
+            
+        Returns:
+            Dict with product details including price, stock, freshness info
+        """
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        response = self._make_request(f"/api/v1/products/{product_id}/details")
+        
+        if not response:
+            raise KnusprAPIError(f"Produkt {product_id} nicht gefunden")
+        
+        product = response.get("product", {})
+        stock = response.get("stock", {})
+        prices = response.get("prices", {})
+        
+        # Extract country info
+        countries = product.get("countries", [])
+        country_name = countries[0].get("name") if countries else None
+        country_code = countries[0].get("code") if countries else None
+        
+        # Extract badges
+        badges = []
+        for badge in product.get("badges", []):
+            badges.append({
+                "type": badge.get("type"),
+                "title": badge.get("title"),
+                "subtitle": badge.get("subtitle"),
+            })
+        
+        # Extract shelf life / freshness
+        shelf_life = stock.get("shelfLife", {}) or {}
+        freshness = stock.get("freshness", {}) or {}
+        
+        # Extract price info
+        price_obj = prices.get("price", {})
+        unit_price_obj = prices.get("pricePerUnit", {})
+        
+        # Sales info
+        sales = prices.get("sales", [])
+        sale_info = None
+        if sales:
+            sale = sales[0]
+            sale_info = {
+                "title": sale.get("title"),
+                "original_price": sale.get("originalPrice"),
+                "sale_price": sale.get("salePrice"),
+            }
+        
+        # Product story
+        story = product.get("productStory")
+        story_info = None
+        if story:
+            story_info = {
+                "title": story.get("title"),
+                "text": story.get("text"),
+            }
+        
+        # Tooltips (contain additional info)
+        tooltips = []
+        for tooltip in stock.get("tooltips", []):
+            tooltips.append({
+                "type": tooltip.get("type"),
+                "message": tooltip.get("message"),
+            })
+        
+        return {
+            "id": product.get("id"),
+            "name": product.get("name"),
+            "slug": product.get("slug"),
+            "brand": product.get("brand"),
+            "amount": product.get("textualAmount"),
+            "unit": product.get("unit"),
+            "price": price_obj.get("amount"),
+            "currency": price_obj.get("currency", "EUR"),
+            "unit_price": unit_price_obj.get("amount"),
+            "unit_price_currency": unit_price_obj.get("currency", "EUR"),
+            "in_stock": stock.get("inStock", False),
+            "max_quantity": stock.get("maxBasketAmount"),
+            "country": country_name,
+            "country_code": country_code,
+            "badges": badges,
+            "images": product.get("images", []),
+            "shelf_life": {
+                "type": shelf_life.get("type"),
+                "average_days": shelf_life.get("average"),
+                "minimum_days": shelf_life.get("minimal"),
+                "best_before": shelf_life.get("bestBefore"),
+            } if shelf_life else None,
+            "freshness_message": freshness.get("message") if freshness else None,
+            "sale": sale_info,
+            "story": story_info,
+            "tooltips": tooltips,
+            "information": product.get("information", []),
+            "advice_for_safe_use": product.get("adviceForSafeUse"),
+            "weighted_item": product.get("weightedItem", False),
+            "premium_only": product.get("premiumOnly", False),
+            "archived": product.get("archived", False),
+        }
+
     def get_rette_products(self, category_id: Optional[int] = None) -> list[dict[str, Any]]:
         """Get all 'Rette Lebensmittel' (expiring) products.
         
@@ -2108,6 +2213,225 @@ def cmd_slot_cancel(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_product(args: argparse.Namespace) -> int:
+    """Handle product command - show detailed product information."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        product_id = int(args.product_id)
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Produkt-ID: {args.product_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Produkt-ID: {args.product_id}")
+            print()
+        return 1
+    
+    try:
+        product = api.get_product_details(product_id)
+        
+        if args.json:
+            print(json.dumps(product, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  📦 PRODUKT-DETAILS                                        ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            # Name and Brand
+            name = product.get("name", "Unbekannt")
+            brand = product.get("brand")
+            print(f"   🏷️  {name}")
+            if brand:
+                print(f"   🏭 Marke: {brand}")
+            print()
+            
+            # Badges (Bio, Premium, etc.)
+            badges = product.get("badges", [])
+            if badges:
+                badge_str = " ".join([f"[{b.get('title', '?')}]" for b in badges if b.get('title')])
+                if badge_str:
+                    print(f"   🏅 {badge_str}")
+                    print()
+            
+            # Price Info
+            print("   💰 PREIS")
+            print("   ─────────────────────────────────")
+            price = product.get("price")
+            currency = product.get("currency", "EUR")
+            amount = product.get("amount", "?")
+            unit_price = product.get("unit_price")
+            
+            if price is not None:
+                print(f"      Preis: {price:.2f} {currency}")
+            print(f"      Menge: {amount}")
+            if unit_price is not None:
+                unit = product.get("unit", "kg")
+                print(f"      Grundpreis: {unit_price:.2f} {currency}/{unit}")
+            
+            # Sale info
+            sale = product.get("sale")
+            if sale:
+                orig = sale.get("original_price")
+                sale_price = sale.get("sale_price")
+                title = sale.get("title", "Angebot")
+                if orig and sale_price:
+                    print(f"      🔥 {title}: {sale_price:.2f} € (statt {orig:.2f} €)")
+            print()
+            
+            # Stock Info
+            print("   📊 VERFÜGBARKEIT")
+            print("   ─────────────────────────────────")
+            in_stock = product.get("in_stock", False)
+            max_qty = product.get("max_quantity")
+            stock_str = "✅ Auf Lager" if in_stock else "❌ Nicht verfügbar"
+            print(f"      Status: {stock_str}")
+            if max_qty:
+                print(f"      Max. Bestellmenge: {max_qty}")
+            
+            if product.get("premium_only"):
+                print(f"      ⭐ Nur für Premium-Kunden")
+            print()
+            
+            # Freshness / Shelf Life
+            shelf_life = product.get("shelf_life")
+            freshness_msg = product.get("freshness_message")
+            if shelf_life or freshness_msg:
+                print("   🥬 FRISCHE")
+                print("   ─────────────────────────────────")
+                if freshness_msg:
+                    print(f"      {freshness_msg}")
+                if shelf_life:
+                    avg = shelf_life.get("average_days")
+                    min_days = shelf_life.get("minimum_days")
+                    if avg:
+                        print(f"      Durchschnittliche Frische: {avg} Tage")
+                    if min_days:
+                        print(f"      Mindest-Haltbarkeit: {min_days} Tage")
+                print()
+            
+            # Country of Origin
+            country = product.get("country")
+            country_code = product.get("country_code")
+            if country:
+                flag = f" ({country_code})" if country_code else ""
+                print("   🌍 HERKUNFT")
+                print("   ─────────────────────────────────")
+                print(f"      {country}{flag}")
+                print()
+            
+            # Tooltips (additional info)
+            tooltips = product.get("tooltips", [])
+            if tooltips:
+                print("   ℹ️  HINWEISE")
+                print("   ─────────────────────────────────")
+                for tip in tooltips:
+                    msg = tip.get("message", "")
+                    if msg:
+                        # Word wrap long messages
+                        words = msg.split()
+                        lines = []
+                        current = ""
+                        for word in words:
+                            if len(current) + len(word) + 1 <= 50:
+                                current = f"{current} {word}".strip()
+                            else:
+                                if current:
+                                    lines.append(current)
+                                current = word
+                        if current:
+                            lines.append(current)
+                        for i, line in enumerate(lines):
+                            prefix = "      " if i == 0 else "        "
+                            print(f"{prefix}{line}")
+                print()
+            
+            # Product Story
+            story = product.get("story")
+            if story:
+                title = story.get("title", "")
+                text = story.get("text", "")
+                if title or text:
+                    print("   📖 PRODUKT-STORY")
+                    print("   ─────────────────────────────────")
+                    if title:
+                        print(f"      {title}")
+                    if text:
+                        # Word wrap
+                        words = text.split()
+                        lines = []
+                        current = ""
+                        for word in words:
+                            if len(current) + len(word) + 1 <= 50:
+                                current = f"{current} {word}".strip()
+                            else:
+                                if current:
+                                    lines.append(current)
+                                current = word
+                        if current:
+                            lines.append(current)
+                        for line in lines:
+                            print(f"      {line}")
+                    print()
+            
+            # Additional product information (if available)
+            information = product.get("information", [])
+            if information:
+                print("   📋 WEITERE INFORMATIONEN")
+                print("   ─────────────────────────────────")
+                for info in information:
+                    info_type = info.get("type", "")
+                    info_value = info.get("value", "")
+                    if info_type and info_value:
+                        print(f"      {info_type}: {info_value}")
+                print()
+            
+            # Safe use advice
+            advice = product.get("advice_for_safe_use")
+            if advice:
+                print("   ⚠️  SICHERHEITSHINWEIS")
+                print("   ─────────────────────────────────")
+                print(f"      {advice}")
+                print()
+            
+            # Images
+            images = product.get("images", [])
+            if images:
+                print("   🖼️  BILDER")
+                print("   ─────────────────────────────────")
+                for i, img in enumerate(images[:3], 1):
+                    print(f"      {i}. {img}")
+                print()
+            
+            # Product ID for reference
+            print(f"   🔗 Produkt-ID: {product.get('id')}")
+            slug = product.get("slug")
+            if slug:
+                print(f"   🌐 https://www.knuspr.de/{slug}/{product.get('id')}")
+            print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
 def cmd_rette(args: argparse.Namespace) -> int:
     """Handle rette command - show all Rette Lebensmittel products."""
     api = KnusprAPI()
@@ -2502,6 +2826,12 @@ def main() -> int:
     frequent_parser.add_argument("--categories", action="store_true", help="Nach Kategorie gruppieren")
     frequent_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     frequent_parser.set_defaults(func=cmd_frequent)
+    
+    # product command
+    product_parser = subparsers.add_parser("product", help="Produkt-Details anzeigen")
+    product_parser.add_argument("product_id", help="Produkt-ID")
+    product_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    product_parser.set_defaults(func=cmd_product)
     
     # rette command
     rette_parser = subparsers.add_parser("rette", help="Alle 'Rette Lebensmittel' anzeigen (bald ablaufend)")

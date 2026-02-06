@@ -49,6 +49,7 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 | 🎯 **Setup** | Interaktives Onboarding — Bio-Präferenz, Sortierung, Ausschlüsse |
 | 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
 | 🔍 **Suche** | Produkte durchsuchen mit Filtern |
+| 📦 **Produkt** | Detaillierte Produktinformationen |
 | 🥬 **Rette** | Alle **Rette Lebensmittel** (bald ablaufend, reduziert) |
 | 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
 | 📦 **Lieferung** | Lieferzeitfenster, Slots, **Slot-Reservierung** |
@@ -205,6 +206,22 @@ knuspr rette                            # ALLE Rette-Produkte anzeigen
 knuspr rette "Krapfen"                  # Rette-Produkte filtern
 knuspr search "Milch" --expiring        # Suche + Filter (nur mit Badge)
 ```
+
+### 📦 Produkt-Details
+
+```bash
+knuspr product 5273                     # Produkt-Details anzeigen
+knuspr product 5273 --json              # Als JSON Output
+```
+
+Zeigt detaillierte Informationen zu einem Produkt:
+- Name, Marke, Preis, Menge, Grundpreis
+- Verfügbarkeit und max. Bestellmenge
+- Frische-Informationen (Haltbarkeit)
+- Herkunftsland
+- Badges (BIO, Premium, etc.)
+- Produkt-Story (wenn verfügbar)
+- Bilder-URLs
 
 ### 🛒 Warenkorb
 
