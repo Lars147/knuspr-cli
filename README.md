@@ -115,19 +115,20 @@ knuspr search "Obst" --json     # JSON Output
 
 ### Filter erkunden
 
-Knuspr generiert Filter dynamisch basierend auf deiner Suche. Mit `knuspr filters` siehst du, welche Filter für einen Suchbegriff verfügbar sind:
+Knuspr generiert **alle Filter dynamisch** basierend auf den Suchergebnissen. Ein Filter erscheint nur, wenn es passende Produkte gibt:
 
 ```bash
-knuspr filters "brot"           # Verfügbare Filter anzeigen
+knuspr filters "brot"           # Verfügbare Filter für "brot"
+knuspr filters "katzenfutter"   # Andere Filter als bei "brot"!
 ```
 
-Ausgabe zeigt z.B.:
-- **Bio:** `b-i-o:bio-items`, `b-i-o:bio-demeter-items`
+Typische Filter-Gruppen:
+- **Bio:** `b-i-o:bio-items` (nur wenn Bio-Produkte existieren)
 - **Ernährung:** `diet:vegetarian-items`, `diet:glutenfree-items`
 - **Kategorie:** `kategorie:480-brot-gebaeck`
 - **Marke:** `marke:alnatura`, `marke:harry`
 
-> **Hinweis:** Aktuell ist `--bio` der einzige voll unterstützte Filter. Andere Filter können mit `knuspr filters` erkundet werden — die API-Integration dafür ist noch in Arbeit.
+Der `--bio` Flag filtert nach Bio-Badge. Wenn keine Bio-Produkte für deine Suche existieren, ist das Ergebnis leer.
 
 ### Rette Lebensmittel
 
