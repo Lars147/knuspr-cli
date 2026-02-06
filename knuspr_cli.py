@@ -858,13 +858,9 @@ class KnusprAPI:
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
-        # Search terms to cover most product categories
-        search_terms = [
-            "Milch", "Brot", "Käse", "Fleisch", "Gemüse", "Obst",
-            "Joghurt", "Butter", "Wurst", "Nudeln", "Reis", "Eier",
-            "Getränke", "Wasser", "Saft", "Kaffee", "Tee", "Müsli",
-            "Süß", "Chips", "Schokolade", "Bio", "Vegan", "a", "e", "i"
-        ]
+        # Search terms to cover most product categories (kept minimal for speed)
+        # Single letters match many products, reducing needed searches
+        search_terms = ["a", "e", "i", "o", "u", "n", "r", "s"]
         
         all_favorites: dict[int, dict] = {}
         
