@@ -258,16 +258,27 @@ class KnusprAPI:
         self,
         query: str,
         limit: int = 10,
-        favorites_only: bool = False
+        favorites_only: bool = False,
+        expiring_only: bool = False
     ) -> list[dict[str, Any]]:
-        """Search for products."""
+        """Search for products.
+        
+        Args:
+            query: Search term
+            limit: Maximum results
+            favorites_only: Only show favorites
+            expiring_only: Only show "Rette Lebensmittel" (expiring soon)
+        """
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        # For expiring filter, request more results to filter from
+        request_limit = limit + 50 if expiring_only else limit + 5
         
         params = urllib.parse.urlencode({
             "search": query,
             "offset": "0",
-            "limit": str(limit + 5),  # Request extra to filter sponsored
+            "limit": str(request_limit),
             "companyId": "1",
             "filterData": json.dumps({"filters": []}),
             "canCorrect": "true"
@@ -286,6 +297,16 @@ class KnusprAPI:
             )
         ]
         
+        # Filter expiring products ("Rette Lebensmittel")
+        if expiring_only:
+            products = [
+                p for p in products
+                if any(
+                    badge.get("slug") == "expiring" or badge.get("type") == "EXPIRING"
+                    for badge in p.get("badge", [])
+                )
+            ]
+        
         # Filter favorites if requested
         if favorites_only:
             products = [p for p in products if p.get("favourite")]
@@ -297,6 +318,16 @@ class KnusprAPI:
         results = []
         for p in products:
             price_info = p.get("price", {})
+            
+            # Extract expiration badge text if present
+            expiry_text = None
+            discount_text = None
+            for badge in p.get("badge", []):
+                if badge.get("type") == "EXPIRING" or badge.get("slug") == "expiring":
+                    expiry_text = badge.get("text") or badge.get("label")
+                if badge.get("position") == "PRICE":
+                    discount_text = badge.get("text") or badge.get("label")
+            
             results.append({
                 "id": p.get("productId"),
                 "name": p.get("productName"),
@@ -307,6 +338,8 @@ class KnusprAPI:
                 "amount": p.get("textualAmount"),
                 "in_stock": p.get("inStock", True),
                 "image": p.get("image"),
+                "expiry": expiry_text,
+                "discount": discount_text,
             })
         
         return results
@@ -716,16 +749,23 @@ def cmd_search(args: argparse.Namespace) -> int:
     config = load_config()
     show_setup_hint = not config and not args.json
     
+    # Check for expiring/rette filter
+    expiring_only = getattr(args, 'expiring', False) or getattr(args, 'rette', False)
+    
     try:
         if not args.json:
             print()
-            print(f"🔍 Suche in Knuspr: '{args.query}'")
+            if expiring_only:
+                print(f"🥬 Rette Lebensmittel: '{args.query}'")
+            else:
+                print(f"🔍 Suche in Knuspr: '{args.query}'")
             print("─" * 50)
         
         results = api.search_products(
             args.query,
             limit=args.limit,
-            favorites_only=args.favorites
+            favorites_only=args.favorites,
+            expiring_only=expiring_only
         )
         
         # Apply config preferences (CLI flags override config)
@@ -802,7 +842,16 @@ def cmd_search(args: argparse.Namespace) -> int:
                 is_bio = "bio" in name_lower or "bio" in brand_lower or "organic" in name_lower
                 bio_badge = " 🌿" if is_bio and prefer_bio else ""
                 
-                print(f"  {i:2}. {name}{brand}{bio_badge}")
+                # Show discount and expiry for Rette Lebensmittel
+                discount = p.get('discount', '')
+                expiry = p.get('expiry', '')
+                discount_str = f" {discount}" if discount else ""
+                
+                print(f"  {i:2}. {name}{brand}{bio_badge}{discount_str}")
+                
+                if expiring_only and expiry:
+                    print(f"      ⏰ {expiry}")
+                
                 print(f"      💰 {p['price']} {p['currency']}  │  📦 {p['amount']}  │  {stock}")
                 print(f"      ID: {p['id']}")
                 print()
@@ -2162,6 +2211,8 @@ def main() -> int:
     search_parser.add_argument("query", help="Suchbegriff")
     search_parser.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Ergebnisse (Standard: 10)")
     search_parser.add_argument("--favorites", action="store_true", help="Nur Favoriten anzeigen")
+    search_parser.add_argument("--expiring", "--rette", action="store_true", 
+                               help="Nur 'Rette Lebensmittel' (bald ablaufend, reduziert)")
     search_parser.add_argument("--bio", action="store_true", dest="bio", default=None, help="Bio-Produkte bevorzugen")
     search_parser.add_argument("--no-bio", action="store_false", dest="bio", help="Bio-Präferenz deaktivieren")
     search_parser.add_argument("--sort", choices=["relevance", "price_asc", "price_desc", "rating"], help="Sortierung")
