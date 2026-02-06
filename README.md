@@ -9,42 +9,36 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/dependencies-none-brightgreen.svg" alt="Zero Dependencies">
-</p>
-
-<p align="center">
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-features">Features</a> •
-  <a href="#-demo">Demo</a> •
-  <a href="#-installation">Installation</a> •
-  <a href="#-usage">Usage</a>
+  <img src="https://img.shields.io/badge/dependencies-keine-brightgreen.svg" alt="Keine Dependencies">
 </p>
 
 ---
 
-## What is this?
+## Was ist das?
 
-**knuspr-cli** bringt den Knuspr.de Online-Supermarkt ins Terminal. Produkte suchen, Warenkorb verwalten — alles ohne Browser.
+**knuspr-cli** bringt den Knuspr.de Online-Supermarkt ins Terminal. Produkte suchen, Warenkorb verwalten, Lieferslots reservieren — alles ohne Browser.
 
-Schnell (keine langsamen Web-Apps), hackbar (pipe Produkte in andere Tools, automatisiere deinen Einkauf), und läuft überall mit zero dependencies — nur Python Standard Library.
+- **Schnell** — keine langsamen Web-Apps
+- **Hackbar** — pipe Produkte in andere Tools, automatisiere deinen Einkauf
+- **Portabel** — läuft überall, nur Python Standard Library (keine Dependencies)
 
-> ⚠️ **Disclaimer:** Dies ist ein Hobby-Projekt für die persönliche Nutzung. Nicht offiziell mit Knuspr.de verbunden oder von Knuspr.de unterstützt.
+> ⚠️ **Hinweis:** Dies ist ein Hobby-Projekt für die persönliche Nutzung. Nicht offiziell mit Knuspr.de verbunden oder von Knuspr.de unterstützt.
 
 ---
 
-## 🚀 Quick Start
+## Schnellstart
 
 ```bash
 # Mit uvx (empfohlen) — läuft sofort ohne Installation
 uvx --from git+https://github.com/Lars147/knuspr-cli knuspr login
 
-# Einloggen, dann loslegen!
+# Einloggen, dann loslegen
 uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 ```
 
 ---
 
-## ✨ Features
+## Features
 
 | Feature | Beschreibung |
 |---------|-------------|
@@ -53,93 +47,17 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 | 🔍 **Suche** | Produkte durchsuchen mit Filtern |
 | 📦 **Produkt** | Detaillierte Produktinformationen |
 | ⭐ **Favoriten** | Favoriten anzeigen, hinzufügen, entfernen |
-| 🥬 **Rette** | Alle **Rette Lebensmittel** (bald ablaufend, reduziert) |
+| 🥬 **Rette** | Alle Rette-Lebensmittel (bald ablaufend, reduziert) |
 | 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
-| 📦 **Lieferung** | Lieferzeitfenster, Slots, **Slot-Reservierung** |
+| 📅 **Lieferslots** | Zeitfenster anzeigen und **reservieren** |
 | 📋 **Bestellungen** | Bestellhistorie und Details |
 | 👤 **Account** | Account-Info, Premium-Status |
 | 🍽️ **Mahlzeiten** | Mahlzeitvorschläge nach Kategorie |
-| ⚡ **JSON Output** | Maschinenlesbare Ausgabe für Scripting |
-| 📦 **Zero Deps** | Nur Python Standard Library, keine Dependencies |
-| 🤖 **AI-Agent Friendly** | Perfekt für Claude, Codex, OpenClaw & andere AI Assistenten |
-
-### Works great with AI Agents
-
-Der CLI-Ansatz macht knuspr-cli ideal für AI Coding Assistenten wie **Claude Code**, **Codex**, oder **OpenClaw**. Text-basierte, strukturierte Befehle und parsierbare Ausgabe ermöglichen es AI Agents, deinen Einkauf einfach zu verwalten.
+| ⚡ **JSON** | Maschinenlesbare Ausgabe für Scripting |
 
 ---
 
-## 🎬 Demo
-
-### Login
-
-```
-$ knuspr login
-
-╔═══════════════════════════════════════════════════════════╗
-║  🛒 KNUSPR LOGIN                                          ║
-╚═══════════════════════════════════════════════════════════╝
-
-📧 E-Mail: user@example.com
-🔑 Passwort: ********
-
-  → Verbinde mit Knuspr.de...
-  → Authentifizierung erfolgreich...
-  → Speichere Session...
-
-✅ Eingeloggt als Max Mustermann (user@example.com)
-   User ID: 123456
-```
-
-### Produkte suchen
-
-```
-$ knuspr search "Champignons" -n 3
-
-🔍 Suche in Knuspr: 'Champignons'
-──────────────────────────────────────────────────
-Gefunden: 3 Produkte
-
-   1. Bio Champignons braun (REWE Bio)
-      💰 2.49 EUR  │  📦 250g  │  ✅
-      ID: 1234567
-
-   2. Champignons weiß (Knuspr)
-      💰 1.99 EUR  │  📦 400g  │  ✅
-      ID: 1234568
-
-   3. Mini Champignons (Gut Bio)
-      💰 2.79 EUR  │  📦 200g  │  ✅
-      ID: 1234569
-```
-
-### Warenkorb anzeigen
-
-```
-$ knuspr cart show
-
-╔═══════════════════════════════════════════════════════════╗
-║  🛒 WARENKORB                                              ║
-╚═══════════════════════════════════════════════════════════╝
-
-📦 Produkte (3):
-
-   • Bio Champignons braun
-     2× 2.49 € = 4.98 €
-     [ID: 1234567]
-
-   • Vollmilch 3.5%
-     1× 1.29 € = 1.29 €
-     [ID: 1234570]
-
-────────────────────────────────────────────────────────────
-   💰 Gesamt: 6.27 EUR
-   ✅ Bestellbereit
-```
-
----
-
-## 📦 Installation
+## Installation
 
 ### Option 1: uvx (empfohlen)
 
@@ -151,7 +69,7 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr --help
 uv tool install git+https://github.com/Lars147/knuspr-cli
 knuspr --help
 
-# Update auf neueste Version
+# Update
 uv tool install --upgrade git+https://github.com/Lars147/knuspr-cli
 ```
 
@@ -160,12 +78,9 @@ uv tool install --upgrade git+https://github.com/Lars147/knuspr-cli
 ```bash
 pipx install git+https://github.com/Lars147/knuspr-cli
 knuspr --help
-
-# Update
-pipx install --force git+https://github.com/Lars147/knuspr-cli
 ```
 
-### Option 3: Clone the repo
+### Option 3: Repository klonen
 
 ```bash
 git clone https://github.com/Lars147/knuspr-cli.git
@@ -175,119 +90,96 @@ python3 knuspr_cli.py --help
 
 ---
 
-## 📖 Usage
+## Verwendung
 
-### 🎯 Setup & Konfiguration
+### Setup & Login
 
 ```bash
-knuspr setup                     # Interaktives Onboarding
-                                 # → Bio-Präferenz (ja/nein/egal)
-                                 # → Standard-Sortierung (Preis/Relevanz/etc.)
-                                 # → Ausschlüsse (z.B. Laktose, Gluten)
-                                 # Suchen nutzen danach automatisch diese Präferenzen!
+knuspr setup                    # Interaktives Onboarding (Bio, Sortierung, Ausschlüsse)
+knuspr login                    # Einloggen
+knuspr status                   # Login-Status prüfen
+knuspr logout                   # Ausloggen
 ```
 
-### 🔐 Authentication
+### Suche
 
 ```bash
-knuspr login                                    # Interaktives Login
-knuspr login --email user@example.com --password secret  # Mit Credentials
-knuspr status                                   # Login-Status prüfen
-knuspr logout                                   # Ausloggen
+knuspr search "Milch"           # Einfache Suche
+knuspr search "Käse" -n 20      # Mehr Ergebnisse
+knuspr search "Brot" --favorites  # Nur Favoriten
+knuspr search "Obst" --json     # JSON Output
 ```
 
-### 🔍 Suche
+### Rette Lebensmittel
+
+Produkte die bald ablaufen — reduziert, gegen Verschwendung:
 
 ```bash
-knuspr search "Milch"                   # Einfache Suche
-knuspr search "Käse" -n 20              # Mehr Ergebnisse
-knuspr search "Brot" --favorites        # Nur Favoriten
-knuspr search "Obst" --json             # JSON Output
-
-# Rette Lebensmittel (bald ablaufend, reduziert)
-knuspr rette                            # ALLE Rette-Produkte anzeigen
-knuspr rette "Krapfen"                  # Rette-Produkte filtern
-knuspr search "Milch" --expiring        # Suche + Filter (nur mit Badge)
+knuspr rette                    # Alle Rette-Produkte
+knuspr rette "Krapfen"          # Filtern
+knuspr search "X" --expiring    # Suche + Badge-Filter
 ```
 
-### 📦 Produkt-Details
+### Produkt-Details
 
 ```bash
-knuspr product 5273                     # Produkt-Details anzeigen
-knuspr product 5273 --json              # Als JSON Output
+knuspr product 5273             # Produkt-Details
+knuspr product 5273 --json      # Als JSON
 ```
 
-Zeigt detaillierte Informationen zu einem Produkt:
-- Name, Marke, Preis, Menge, Grundpreis
-- Verfügbarkeit und max. Bestellmenge
-- Frische-Informationen (Haltbarkeit)
-- Herkunftsland
-- Badges (BIO, Premium, etc.)
-- Produkt-Story (wenn verfügbar)
-- Bilder-URLs
-
-### ⭐ Favoriten
+### Favoriten
 
 ```bash
-knuspr favorites                        # Alle Favoriten anzeigen
-knuspr favorites list                   # Alle Favoriten anzeigen
-knuspr favorites list --json            # Als JSON
-knuspr favorites add 123456             # Produkt zu Favoriten hinzufügen
-knuspr favorites remove 123456          # Produkt aus Favoriten entfernen
+knuspr favorites                # Alle Favoriten
+knuspr favorites add 123456     # Hinzufügen
+knuspr favorites remove 123456  # Entfernen
 ```
 
-### 🛒 Warenkorb
+### Warenkorb
 
 ```bash
-knuspr cart show                        # Warenkorb anzeigen
-knuspr cart show --json                 # Als JSON
-knuspr cart add 123456                  # Produkt hinzufügen
-knuspr cart add 123456 -q 3             # 3 Stück hinzufügen
-knuspr cart remove 123456               # Produkt entfernen
-knuspr cart open                        # Im Browser öffnen
+knuspr cart show                # Warenkorb anzeigen
+knuspr cart add 123456          # Produkt hinzufügen
+knuspr cart add 123456 -q 3     # 3 Stück hinzufügen
+knuspr cart remove 123456       # Entfernen
+knuspr cart open                # Im Browser öffnen
 ```
 
-### 📦 Lieferung & Slot-Reservierung
+### Lieferung & Slot-Reservierung
 
 ```bash
-knuspr slots                            # Verfügbare Lieferzeitfenster
-knuspr slots --detailed                 # Mit 15-Minuten Slots + IDs
-knuspr delivery                         # Aktuelle Lieferinfos
+knuspr slots                    # Verfügbare Zeitfenster
+knuspr slots --detailed         # Mit 15-Minuten Slots + IDs
+knuspr delivery                 # Aktuelle Lieferinfos
 
 # Slot reservieren (60 Minuten gültig)
-knuspr slot reserve 262025              # Slot-ID aus --detailed
-knuspr slot status                      # Aktuelle Reservierung anzeigen
-knuspr slot cancel                      # Reservierung stornieren
+knuspr slot reserve 262025      # Slot-ID aus --detailed
+knuspr slot status              # Reservierung anzeigen
+knuspr slot cancel              # Reservierung stornieren
 ```
 
-### 📋 Bestellungen
+### Bestellungen
 
 ```bash
-knuspr orders                           # Bestellhistorie anzeigen
-knuspr order 12345678                   # Bestelldetails für ID
+knuspr orders                   # Bestellhistorie
+knuspr order 12345678           # Details einer Bestellung
 ```
 
-### 👤 Account
+### Account & mehr
 
 ```bash
-knuspr account                          # Account-Info, Premium-Status
-knuspr frequent                         # Häufig gekaufte Produkte
-```
-
-### 🍽️ Mahlzeiten & Vorschläge
-
-```bash
-knuspr meals breakfast                  # Frühstücks-Vorschläge
-knuspr meals lunch                      # Mittagessen-Ideen
-knuspr meals dinner                     # Abendessen-Vorschläge
-knuspr meals snack                      # Snack-Ideen
+knuspr account                  # Account-Info, Premium-Status
+knuspr frequent                 # Häufig gekaufte Produkte
+knuspr meals breakfast          # Frühstücks-Vorschläge
+knuspr meals lunch              # Mittagessen
+knuspr meals dinner             # Abendessen
 ```
 
 ---
 
-## ⚙️ Configuration
+## Konfiguration
 
-Credentials können auf verschiedene Weisen bereitgestellt werden (in dieser Reihenfolge geprüft):
+Credentials können auf verschiedene Weisen bereitgestellt werden:
 
 ### 1. Interaktiv
 
@@ -310,7 +202,7 @@ export KNUSPR_PASSWORD="secret"
 knuspr login
 ```
 
-### 4. Credentials File
+### 4. Credentials-Datei
 
 Erstelle `~/.knuspr_credentials.json`:
 ```json
@@ -322,59 +214,23 @@ Erstelle `~/.knuspr_credentials.json`:
 
 ---
 
-## 🔧 How It Works
-
-| Component | Technology |
-|-----------|------------|
-| Authentication | Knuspr/Rohlik REST API |
-| Search | Knuspr Search API |
-| Cart | Knuspr Cart API |
-| Storage | Local JSON session file |
-
-### Files
+## Dateien
 
 ```
 ~/
-├── .knuspr_session.json       # Session cookies
-└── .knuspr_credentials.json   # Optional: gespeicherte Credentials
+├── .knuspr_session.json       # Session-Cookies
+├── .knuspr_credentials.json   # Gespeicherte Credentials (optional)
+└── .knuspr_config.json        # Setup-Präferenzen (optional)
 ```
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome!
-
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/awesome`)
-3. Commit your changes (`git commit -m 'Add awesome feature'`)
-4. Push to the branch (`git push origin feature/awesome`)
-5. Open a Pull Request
-
-### Ideas & TODOs
-
-- [x] ~~Favorites management~~ ✅
-- [x] ~~Order history~~ ✅
-- [x] ~~Delivery slots~~ ✅
-- [x] ~~Slot reservation~~ ✅
-- [ ] Shopping list import from tmx-cli
-
----
-
-## ⚠️ Disclaimer
-
-This is an **unofficial** tool. Knuspr® is a trademark of Rohlik Group.
-
-This project is not affiliated with, endorsed, or sponsored by Rohlik/Knuspr. Please respect their terms of service.
-
----
-
-## 📄 License
+## Lizenz
 
 MIT © [Lars Heinen](https://github.com/Lars147)
 
 ---
 
 <p align="center">
-  <sub>Made with ❤️ for people who prefer terminals over browsers</sub>
+  <sub>Für alle, die lieber tippen als klicken 🖥️</sub>
 </p>
