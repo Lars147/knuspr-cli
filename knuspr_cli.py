@@ -2121,6 +2121,8 @@ def cmd_rette(args: argparse.Namespace) -> int:
             print()
         return 1
     
+    search_term = getattr(args, 'search', None)
+    
     try:
         if not args.json:
             print()
@@ -2132,16 +2134,31 @@ def cmd_rette(args: argparse.Namespace) -> int:
         
         products = api.get_rette_products()
         
+        # Filter by search term if provided
+        if search_term and products:
+            search_lower = search_term.lower()
+            products = [
+                p for p in products
+                if search_lower in (p.get("name") or "").lower()
+                or search_lower in (p.get("brand") or "").lower()
+            ]
+        
         if args.json:
             print(json.dumps(products, indent=2, ensure_ascii=False))
         else:
             if not products:
                 print()
-                print("   ℹ️  Keine Rette-Lebensmittel verfügbar.")
+                if search_term:
+                    print(f"   ℹ️  Keine Rette-Lebensmittel für '{search_term}' gefunden.")
+                else:
+                    print("   ℹ️  Keine Rette-Lebensmittel verfügbar.")
                 print()
                 return 0
             
-            print(f"   Gefunden: {len(products)} Produkte")
+            if search_term:
+                print(f"   Gefunden: {len(products)} Produkte für '{search_term}'")
+            else:
+                print(f"   Gefunden: {len(products)} Produkte")
             print()
             
             for i, p in enumerate(products, 1):
@@ -2488,6 +2505,7 @@ def main() -> int:
     
     # rette command
     rette_parser = subparsers.add_parser("rette", help="Alle 'Rette Lebensmittel' anzeigen (bald ablaufend)")
+    rette_parser.add_argument("search", nargs="?", help="Optional: Suchbegriff zum Filtern")
     rette_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     rette_parser.set_defaults(func=cmd_rette)
     

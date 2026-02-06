@@ -202,8 +202,8 @@ knuspr search "Obst" --json             # JSON Output
 
 # Rette Lebensmittel (bald ablaufend, reduziert)
 knuspr rette                            # ALLE Rette-Produkte anzeigen
-knuspr search "Milch" --expiring        # Suche + Filter
-knuspr search "Fisch" --rette           # Alias für --expiring
+knuspr rette "Krapfen"                  # Rette-Produkte filtern
+knuspr search "Milch" --expiring        # Suche + Filter (nur mit Badge)
 ```
 
 ### 🛒 Warenkorb
