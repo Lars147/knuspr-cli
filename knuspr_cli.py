@@ -256,7 +256,8 @@ class KnusprAPI:
         query: str,
         limit: int = 10,
         favorites_only: bool = False,
-        expiring_only: bool = False
+        expiring_only: bool = False,
+        bio_only: bool = False
     ) -> list[dict[str, Any]]:
         """Search for products.
         
@@ -265,6 +266,7 @@ class KnusprAPI:
             limit: Maximum results
             favorites_only: Only show favorites
             expiring_only: Only show "Rette Lebensmittel" (expiring soon)
+            bio_only: Only show BIO products (uses native API filter)
         """
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
@@ -272,12 +274,17 @@ class KnusprAPI:
         # For expiring filter, request more results to filter from
         request_limit = limit + 50 if expiring_only else limit + 5
         
+        # Build filters list
+        filters = []
+        if bio_only:
+            filters.append("b-i-o:bio-items")
+        
         params = urllib.parse.urlencode({
             "search": query,
             "offset": "0",
             "limit": str(request_limit),
             "companyId": "1",
-            "filterData": json.dumps({"filters": []}),
+            "filterData": json.dumps({"filters": filters}),
             "canCorrect": "true"
         })
         
@@ -1074,17 +1081,18 @@ def cmd_search(args: argparse.Namespace) -> int:
                 print(f"🔍 Suche in Knuspr: '{args.query}'")
             print("─" * 50)
         
-        results = api.search_products(
-            args.query,
-            limit=args.limit,
-            favorites_only=args.favorites,
-            expiring_only=expiring_only
-        )
-        
         # Apply config preferences (CLI flags override config)
         prefer_bio = getattr(args, 'bio', None)
         if prefer_bio is None:
             prefer_bio = config.get("prefer_bio", False)
+        
+        results = api.search_products(
+            args.query,
+            limit=args.limit,
+            favorites_only=args.favorites,
+            expiring_only=expiring_only,
+            bio_only=prefer_bio  # Use native API filter for BIO
+        )
         
         exclusions = getattr(args, 'exclude', None)
         if exclusions is None:
@@ -1116,19 +1124,6 @@ def cmd_search(args: argparse.Namespace) -> int:
             results.sort(key=lambda p: p.get("price") or 0, reverse=True)
         # rating and relevance keep original order (API default)
         
-        # Apply bio preference (boost bio products to top)
-        if prefer_bio:
-            bio_products = []
-            non_bio_products = []
-            for p in results:
-                name = (p.get("name") or "").lower()
-                brand = (p.get("brand") or "").lower()
-                if "bio" in name or "bio" in brand or "organic" in name:
-                    bio_products.append(p)
-                else:
-                    non_bio_products.append(p)
-            results = bio_products + non_bio_products
-        
         if args.json:
             print(json.dumps(results, indent=2, ensure_ascii=False))
         else:
@@ -1142,7 +1137,7 @@ def cmd_search(args: argparse.Namespace) -> int:
             
             print(f"Gefunden: {len(results)} Produkte")
             if prefer_bio:
-                print("   🌿 Bio-Produkte werden bevorzugt")
+                print("   🌿 Nur Bio-Produkte (API-Filter)")
             print()
             
             for i, p in enumerate(results, 1):
