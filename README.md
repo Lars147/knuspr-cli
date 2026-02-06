@@ -310,15 +310,7 @@ export KNUSPR_PASSWORD="secret"
 knuspr login
 ```
 
-### 4. Secrets File
-
-Erstelle `~/.openclaw/workspace/secrets/knuspr.env`:
-```bash
-KNUSPR_EMAIL="user@example.com"
-KNUSPR_PASSWORD="secret"
-```
-
-### 5. Credentials File
+### 4. Credentials File
 
 Erstelle `~/.knuspr_credentials.json`:
 ```json
