@@ -486,6 +486,60 @@ class KnusprAPI:
             return response
         data = response.get("data", response) if isinstance(response, dict) else response
         return data if isinstance(data, list) else []
+    
+    def get_current_reservation(self) -> Optional[dict[str, Any]]:
+        """Get current timeslot reservation."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        try:
+            response = self._make_request("/services/frontend-service/v1/timeslot-reservation")
+            if isinstance(response, dict):
+                return response.get("data", response) if response else None
+            return response
+        except KnusprAPIError as e:
+            if e.status == 404:
+                return None  # No reservation
+            raise
+    
+    def reserve_slot(self, slot_id: int, slot_type: str = "ON_TIME") -> dict[str, Any]:
+        """Reserve a delivery time slot.
+        
+        Args:
+            slot_id: The slot ID to reserve
+            slot_type: Slot type - "ON_TIME" for 15-min precision, "VIRTUAL" for 1-hour window
+        
+        Returns:
+            Reservation confirmation data
+        """
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        payload = {
+            "slotId": slot_id,
+            "slotType": slot_type
+        }
+        
+        response = self._make_request(
+            "/services/frontend-service/v1/timeslot-reservation",
+            method="POST",
+            data=payload
+        )
+        
+        if isinstance(response, dict):
+            return response.get("data", response)
+        return response if response else {}
+    
+    def cancel_reservation(self) -> bool:
+        """Cancel current timeslot reservation."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        self._make_request(
+            "/services/frontend-service/v1/timeslot-reservation",
+            method="DELETE"
+        )
+        return True
 
 
 def load_credentials() -> tuple[Optional[str], Optional[str]]:
@@ -1252,7 +1306,8 @@ def cmd_slots(args: argparse.Namespace) -> int:
                 
                 price_str = "Kostenlos" if price == 0 else f"{price:.2f} €"
                 
-                print(f"      🕐 {time_window:12} | 💰 {price_str:10} | {status:14} {eco}{premium}")
+                slot_id = slot.get("slotId") or slot.get("id") or "?"
+                print(f"      🕐 {time_window:12} | 💰 {price_str:10} | {status:14} {eco}{premium} [ID: {slot_id}]")
             
             print()
         
@@ -1716,6 +1771,187 @@ def cmd_frequent(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_slot_reserve(args: argparse.Namespace) -> int:
+    """Handle slot reserve command - reserve a delivery time slot."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        slot_id = int(args.slot_id)
+        slot_type = args.type.upper() if hasattr(args, 'type') and args.type else "ON_TIME"
+        
+        if not args.json:
+            print()
+            print(f"  → Reserviere Slot {slot_id} ({slot_type})...")
+        
+        api.reserve_slot(slot_id, slot_type)
+        
+        # Fetch the current reservation to get full details
+        reservation = api.get_current_reservation()
+        
+        if args.json:
+            print(json.dumps(reservation or {"success": True, "slotId": slot_id}, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  ✅ SLOT RESERVIERT                                        ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            # Parse reservationDetail structure (same as status)
+            detail = (reservation or {}).get("reservationDetail", {})
+            time_window = detail.get("dayAndTimeWindow") or f"Slot {slot_id}"
+            duration = detail.get("duration") or 60
+            expires = detail.get("tillZoned") or detail.get("till") or ""
+            
+            print(f"   🕐 Zeitfenster: {time_window}")
+            print(f"   🆔 Slot-ID: {slot_id}")
+            print(f"   ⏱️  Reservierung gültig für: {duration} Minuten")
+            if expires:
+                print(f"   ⏰ Läuft ab: {format_date(expires)}")
+            print()
+            print("   💡 Tipp: Reservierung wird beim Bestellen automatisch verwendet.")
+            print()
+        
+        return 0
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Slot-ID: {args.slot_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Slot-ID: {args.slot_id}")
+            print()
+        return 1
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_slot_status(args: argparse.Namespace) -> int:
+    """Handle slot status command - show current reservation."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        reservation = api.get_current_reservation()
+        
+        if args.json:
+            print(json.dumps(reservation or {"active": False}, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  📅 AKTUELLE RESERVIERUNG                                  ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            
+            is_active = reservation.get("active", False) if reservation else False
+            
+            if not reservation or not is_active:
+                print("   ℹ️  Kein Zeitfenster reserviert.")
+                print()
+                print("   💡 Tipp: Nutze 'knuspr slots --detailed' um verfügbare Zeitfenster zu sehen,")
+                print("           dann 'knuspr slot reserve <id>' zum Reservieren.")
+                print()
+                return 0
+            
+            # Parse reservationDetail structure
+            detail = reservation.get("reservationDetail", {})
+            time_window = detail.get("dayAndTimeWindow") or "Unbekannt"
+            slot_id = detail.get("slotId") or "?"
+            slot_type = detail.get("slotType") or "ON_TIME"
+            duration = detail.get("duration") or 60
+            expires = detail.get("tillZoned") or detail.get("till") or ""
+            
+            print(f"   ✅ Reserviert: {time_window}")
+            print(f"   🆔 Slot-ID: {slot_id}")
+            print(f"   📦 Typ: {slot_type}")
+            print(f"   ⏱️  Reservierung gültig für: {duration} Minuten")
+            if expires:
+                print(f"   ⏰ Läuft ab: {format_date(expires)}")
+            print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_slot_cancel(args: argparse.Namespace) -> int:
+    """Handle slot cancel command - cancel current reservation."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        # First check if there's a reservation
+        reservation = api.get_current_reservation()
+        
+        if not reservation:
+            if args.json:
+                print(json.dumps({"message": "Keine aktive Reservierung"}, indent=2))
+            else:
+                print()
+                print("ℹ️  Keine aktive Reservierung zum Stornieren.")
+                print()
+            return 0
+        
+        if not args.json:
+            print()
+            print("  → Storniere Reservierung...")
+        
+        api.cancel_reservation()
+        
+        if args.json:
+            print(json.dumps({"success": True, "message": "Reservierung storniert"}, indent=2))
+        else:
+            print()
+            print("✅ Reservierung storniert.")
+            print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
 def cmd_meals(args: argparse.Namespace) -> int:
     """Handle meals command - get meal suggestions based on purchase history."""
     api = KnusprAPI()
@@ -1970,6 +2206,28 @@ def main() -> int:
     slots_parser.add_argument("--detailed", "-d", action="store_true", help="Zeige auch 15-Minuten Slots")
     slots_parser.set_defaults(func=cmd_slots)
     
+    # slot command (for reserve/status/cancel)
+    slot_parser = subparsers.add_parser("slot", help="Slot-Reservierung verwalten")
+    slot_subparsers = slot_parser.add_subparsers(dest="slot_command", help="Slot-Befehle")
+    
+    # slot reserve
+    slot_reserve_parser = slot_subparsers.add_parser("reserve", help="Zeitfenster reservieren")
+    slot_reserve_parser.add_argument("slot_id", help="Slot-ID (aus 'knuspr slots --detailed')")
+    slot_reserve_parser.add_argument("--type", "-t", choices=["ON_TIME", "VIRTUAL"], default="ON_TIME", 
+                                     help="Slot-Typ: ON_TIME (15-min) oder VIRTUAL (1-Stunde)")
+    slot_reserve_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    slot_reserve_parser.set_defaults(func=cmd_slot_reserve)
+    
+    # slot status
+    slot_status_parser = slot_subparsers.add_parser("status", help="Aktuelle Reservierung anzeigen")
+    slot_status_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    slot_status_parser.set_defaults(func=cmd_slot_status)
+    
+    # slot cancel
+    slot_cancel_parser = slot_subparsers.add_parser("cancel", help="Reservierung stornieren")
+    slot_cancel_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    slot_cancel_parser.set_defaults(func=cmd_slot_cancel)
+    
     # orders command
     orders_parser = subparsers.add_parser("orders", help="Bestellhistorie anzeigen")
     orders_parser.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Bestellungen (Standard: 10)")
@@ -2012,6 +2270,10 @@ def main() -> int:
     
     if args.command == "cart" and not args.cart_command:
         cart_parser.print_help()
+        return 0
+    
+    if args.command == "slot" and not args.slot_command:
+        slot_parser.print_help()
         return 0
     
     return args.func(args)
