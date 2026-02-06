@@ -858,42 +858,53 @@ class KnusprAPI:
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
-        # Search terms to cover most product categories (kept minimal for speed)
-        # Single letters match many products, reducing needed searches
-        search_terms = ["a", "e", "i", "o", "u", "n", "r", "s"]
+        # Search terms: common German letters for broad coverage
+        # With pagination (limit 500, max 1000 per term) = ~8-16 API calls
+        search_terms = ["e", "a", "n", "i"]
         
         all_favorites: dict[int, dict] = {}
         
         for term in search_terms:
-            try:
-                params = urllib.parse.urlencode({
-                    "search": term,
-                    "offset": "0",
-                    "limit": "100",
-                    "companyId": "1",
-                    "filterData": json.dumps({"filters": []}),
-                    "canCorrect": "true"
-                })
-                
-                response = self._make_request(f"/services/frontend-service/search-metadata?{params}")
-                products = response.get("data", {}).get("productList", [])
-                
-                for p in products:
-                    if p.get("favourite") and p.get("productId") not in all_favorites:
-                        price_info = p.get("price", {})
-                        all_favorites[p.get("productId")] = {
-                            "id": p.get("productId"),
-                            "name": p.get("productName"),
-                            "price": price_info.get("full"),
-                            "currency": price_info.get("currency", "EUR"),
-                            "unit_price": price_info.get("unitPrice"),
-                            "brand": p.get("brand"),
-                            "amount": p.get("textualAmount"),
-                            "in_stock": p.get("inStock", True),
-                            "image": p.get("image"),
-                        }
-            except KnusprAPIError:
-                continue
+            offset = 0
+            limit = 500  # API accepts up to ~500
+            max_offset = 1000  # Don't go too deep per term (balance speed vs coverage)
+            
+            while offset < max_offset:
+                try:
+                    params = urllib.parse.urlencode({
+                        "search": term,
+                        "offset": str(offset),
+                        "limit": str(limit),
+                        "companyId": "1",
+                        "filterData": json.dumps({"filters": []}),
+                        "canCorrect": "true"
+                    })
+                    
+                    response = self._make_request(f"/services/frontend-service/search-metadata?{params}")
+                    products = response.get("data", {}).get("productList", [])
+                    
+                    for p in products:
+                        if p.get("favourite") and p.get("productId") not in all_favorites:
+                            price_info = p.get("price", {})
+                            all_favorites[p.get("productId")] = {
+                                "id": p.get("productId"),
+                                "name": p.get("productName"),
+                                "price": price_info.get("full"),
+                                "currency": price_info.get("currency", "EUR"),
+                                "unit_price": price_info.get("unitPrice"),
+                                "brand": p.get("brand"),
+                                "amount": p.get("textualAmount"),
+                                "in_stock": p.get("inStock", True),
+                                "image": p.get("image"),
+                            }
+                    
+                    # Stop if we got less than requested (end of results)
+                    if len(products) < limit:
+                        break
+                    
+                    offset += limit
+                except KnusprAPIError:
+                    break
         
         # Sort by name
         return sorted(all_favorites.values(), key=lambda p: p.get("name", "").lower())
