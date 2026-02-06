@@ -573,6 +573,113 @@ class KnusprAPI:
             method="DELETE"
         )
         return True
+    
+    def get_rette_products(self, category_id: Optional[int] = None) -> list[dict[str, Any]]:
+        """Get all 'Rette Lebensmittel' (expiring) products.
+        
+        Args:
+            category_id: Optional category filter (652=Fleisch, 532=Kühlregal, etc.)
+        
+        Returns:
+            List of expiring products with details
+        """
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        import re
+        
+        # Rette Lebensmittel category IDs
+        RETTE_CATEGORIES = {
+            652: "Fleisch & Fisch",
+            532: "Kühlregal", 
+            663: "Wurst & Schinken",
+            480: "Brot & Gebäck",
+            2416: "Plant Based",
+            833: "Baby & Kinder",
+            4668: "Süßes & Salziges",
+            770: "Marks & Spencer",
+        }
+        
+        if category_id:
+            categories = {category_id: RETTE_CATEGORIES.get(category_id, "Unbekannt")}
+        else:
+            categories = RETTE_CATEGORIES
+        
+        all_product_ids = set()
+        
+        # Scrape each category page for product IDs
+        for cat_id in categories.keys():
+            try:
+                url = f"{BASE_URL}/rette-lebensmittel/c{cat_id}"
+                headers = self._get_headers()
+                headers["Accept"] = "text/html"
+                
+                request = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    html = response.read().decode("utf-8")
+                
+                # Extract product IDs from HTML
+                pids = re.findall(r'"productId":(\d+)', html)
+                all_product_ids.update(pids)
+            except Exception:
+                continue
+        
+        if not all_product_ids:
+            return []
+        
+        # Fetch product details using the card endpoint
+        product_ids = list(all_product_ids)
+        params = "&".join([f"products={pid}" for pid in product_ids])
+        
+        try:
+            result = self._make_request(f"/api/v1/products/card?{params}&categoryType=last-minute")
+        except KnusprAPIError:
+            return []
+        
+        if not isinstance(result, list):
+            return []
+        
+        # Format results
+        products = []
+        for p in result:
+            # Extract expiry badge
+            expiry_text = None
+            discount_text = None
+            for badge in p.get("badges", []):
+                if badge.get("type") == "EXPIRING":
+                    expiry_text = badge.get("text")
+                if badge.get("position") == "PRICE":
+                    discount_text = badge.get("text")
+            
+            prices = p.get("prices", {})
+            
+            products.append({
+                "id": p.get("productId"),
+                "name": p.get("name"),
+                "price": prices.get("salePrice") or prices.get("originalPrice"),
+                "original_price": prices.get("originalPrice"),
+                "currency": prices.get("currency", "EUR"),
+                "unit_price": prices.get("unitPrice"),
+                "brand": p.get("brand"),
+                "amount": p.get("textualAmount"),
+                "in_stock": p.get("stock", {}).get("availabilityStatus") == "AVAILABLE",
+                "expiry": expiry_text,
+                "discount": discount_text,
+            })
+        
+        # Sort by expiry (today first)
+        def expiry_sort(p):
+            exp = (p.get("expiry") or "").lower()
+            if "heute" in exp:
+                return 0
+            elif "morgen" in exp:
+                return 1
+            else:
+                return 2
+        
+        products.sort(key=expiry_sort)
+        
+        return products
 
 
 def load_credentials() -> tuple[Optional[str], Optional[str]]:
@@ -2001,6 +2108,81 @@ def cmd_slot_cancel(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_rette(args: argparse.Namespace) -> int:
+    """Handle rette command - show all Rette Lebensmittel products."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        if not args.json:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  🥬 RETTE LEBENSMITTEL                                     ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            print("   → Lade Produkte...")
+        
+        products = api.get_rette_products()
+        
+        if args.json:
+            print(json.dumps(products, indent=2, ensure_ascii=False))
+        else:
+            if not products:
+                print()
+                print("   ℹ️  Keine Rette-Lebensmittel verfügbar.")
+                print()
+                return 0
+            
+            print(f"   Gefunden: {len(products)} Produkte")
+            print()
+            
+            for i, p in enumerate(products, 1):
+                stock = "✅" if p["in_stock"] else "❌"
+                brand = f" ({p['brand']})" if p.get('brand') else ""
+                name = p['name'] or "?"
+                
+                # Show discount
+                discount = p.get('discount', '')
+                discount_str = f" {discount}" if discount else ""
+                
+                # Price formatting
+                price = p.get('price') or 0
+                orig = p.get('original_price')
+                if orig and orig != price:
+                    price_str = f"💰 {price:.2f} € (statt {orig:.2f} €)"
+                else:
+                    price_str = f"💰 {price:.2f} €"
+                
+                print(f"  {i:2}. {name}{brand}{discount_str}")
+                
+                # Expiry info
+                expiry = p.get('expiry', '')
+                if expiry:
+                    print(f"      ⏰ {expiry}")
+                
+                print(f"      {price_str}  │  📦 {p.get('amount', '?')}  │  {stock}")
+                print(f"      ID: {p['id']}")
+                print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
 def cmd_meals(args: argparse.Namespace) -> int:
     """Handle meals command - get meal suggestions based on purchase history."""
     api = KnusprAPI()
@@ -2303,6 +2485,11 @@ def main() -> int:
     frequent_parser.add_argument("--categories", action="store_true", help="Nach Kategorie gruppieren")
     frequent_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     frequent_parser.set_defaults(func=cmd_frequent)
+    
+    # rette command
+    rette_parser = subparsers.add_parser("rette", help="Alle 'Rette Lebensmittel' anzeigen (bald ablaufend)")
+    rette_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    rette_parser.set_defaults(func=cmd_rette)
     
     # meals command
     meals_parser = subparsers.add_parser("meals", help="Mahlzeitvorschläge basierend auf Kaufhistorie")
