@@ -50,7 +50,7 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 | 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
 | 🔍 **Suche** | Produkte durchsuchen mit Filtern |
 | 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
-| 📦 **Lieferung** | Lieferzeitfenster, Slots, Lieferinfos |
+| 📦 **Lieferung** | Lieferzeitfenster, Slots, **Slot-Reservierung** |
 | 📋 **Bestellungen** | Bestellhistorie und Details |
 | 👤 **Account** | Account-Info, Premium-Status |
 | 🍽️ **Mahlzeiten** | Mahlzeitvorschläge nach Kategorie |
@@ -211,12 +211,17 @@ knuspr cart remove 123456               # Produkt entfernen
 knuspr cart open                        # Im Browser öffnen
 ```
 
-### 📦 Lieferung
+### 📦 Lieferung & Slot-Reservierung
 
 ```bash
 knuspr slots                            # Verfügbare Lieferzeitfenster
-knuspr slots --detailed                 # Mit 15-Minuten Slots
+knuspr slots --detailed                 # Mit 15-Minuten Slots + IDs
 knuspr delivery                         # Aktuelle Lieferinfos
+
+# Slot reservieren (60 Minuten gültig)
+knuspr slot reserve 262025              # Slot-ID aus --detailed
+knuspr slot status                      # Aktuelle Reservierung anzeigen
+knuspr slot cancel                      # Reservierung stornieren
 ```
 
 ### 📋 Bestellungen
@@ -323,6 +328,7 @@ Contributions are welcome!
 - [ ] Favorites management
 - [x] ~~Order history~~ ✅
 - [x] ~~Delivery slots~~ ✅
+- [x] ~~Slot reservation~~ ✅
 - [ ] Shopping list import from tmx-cli
 
 ---
