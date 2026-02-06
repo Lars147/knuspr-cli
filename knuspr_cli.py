@@ -865,31 +865,57 @@ class KnusprAPI:
         if not product_ids:
             return []
         
-        # Fetch details for each product
+        # Fetch details in batches (API supports comma-separated IDs)
         favorites = []
-        for pid in product_ids:
+        batch_size = 50  # Process 50 products per request
+        
+        for i in range(0, len(product_ids), batch_size):
+            batch_ids = product_ids[i:i + batch_size]
+            ids_param = ",".join(map(str, batch_ids))
+            
             try:
-                card = self._make_request(f"/api/v1/products/{pid}/card")
-                prices = card.get("prices", {})
-                stock = card.get("stock", {})
+                cards = self._make_request(f"/api/v1/products/card?products={ids_param}")
                 
-                # Use sale price if available, otherwise original price
-                price = prices.get("salePrice") or prices.get("originalPrice")
-                
-                favorites.append({
-                    "id": card.get("productId"),
-                    "name": card.get("name"),
-                    "price": price,
-                    "currency": prices.get("currency", "EUR"),
-                    "unit_price": prices.get("unitPrice"),
-                    "brand": card.get("brand"),
-                    "amount": card.get("textualAmount"),
-                    "in_stock": stock.get("availabilityStatus") == "AVAILABLE",
-                    "image": card.get("image", {}).get("path") if isinstance(card.get("image"), dict) else card.get("image"),
-                })
+                for card in cards:
+                    prices = card.get("prices", {})
+                    stock = card.get("stock", {})
+                    
+                    # Use sale price if available, otherwise original price
+                    price = prices.get("salePrice") or prices.get("originalPrice")
+                    
+                    favorites.append({
+                        "id": card.get("productId"),
+                        "name": card.get("name"),
+                        "price": price,
+                        "currency": prices.get("currency", "EUR"),
+                        "unit_price": prices.get("unitPrice"),
+                        "brand": card.get("brand"),
+                        "amount": card.get("textualAmount"),
+                        "in_stock": stock.get("availabilityStatus") == "AVAILABLE",
+                        "image": card.get("image", {}).get("path") if isinstance(card.get("image"), dict) else card.get("image"),
+                    })
             except KnusprAPIError:
-                # Skip products that can't be loaded (e.g., delisted)
-                continue
+                # If batch fails, try individual requests as fallback
+                for pid in batch_ids:
+                    try:
+                        card = self._make_request(f"/api/v1/products/{pid}/card")
+                        prices = card.get("prices", {})
+                        stock = card.get("stock", {})
+                        price = prices.get("salePrice") or prices.get("originalPrice")
+                        
+                        favorites.append({
+                            "id": card.get("productId"),
+                            "name": card.get("name"),
+                            "price": price,
+                            "currency": prices.get("currency", "EUR"),
+                            "unit_price": prices.get("unitPrice"),
+                            "brand": card.get("brand"),
+                            "amount": card.get("textualAmount"),
+                            "in_stock": stock.get("availabilityStatus") == "AVAILABLE",
+                            "image": card.get("image", {}).get("path") if isinstance(card.get("image"), dict) else card.get("image"),
+                        })
+                    except KnusprAPIError:
+                        continue
         
         # Sort by name
         return sorted(favorites, key=lambda p: (p.get("name") or "").lower())
