@@ -52,6 +52,7 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 | 📅 **Lieferslots** | Zeitfenster anzeigen und **reservieren** |
 | 📋 **Bestellungen** | Bestellhistorie und Details |
 | 👤 **Account** | Account-Info, Premium-Status |
+| ⚡ **Completion** | Tab-Completion für Bash, Zsh, Fish |
 | 🍽️ **Mahlzeiten** | Mahlzeitvorschläge nach Kategorie |
 | ⚡ **JSON** | Maschinenlesbare Ausgabe für Scripting |
 
@@ -173,6 +174,19 @@ knuspr frequent                 # Häufig gekaufte Produkte
 knuspr meals breakfast          # Frühstücks-Vorschläge
 knuspr meals lunch              # Mittagessen
 knuspr meals dinner             # Abendessen
+```
+
+### Shell-Completion
+
+```bash
+# Bash (zu ~/.bashrc hinzufügen)
+eval "$(knuspr completion bash)"
+
+# Zsh (zu ~/.zshrc hinzufügen)
+eval "$(knuspr completion zsh)"
+
+# Fish (einmalig ausführen)
+knuspr completion fish > ~/.config/fish/completions/knuspr.fish
 ```
 
 ---

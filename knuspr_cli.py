@@ -2963,6 +2963,324 @@ def cmd_favorites_remove(args: argparse.Namespace) -> int:
         return 1
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Shell Completion
+# ─────────────────────────────────────────────────────────────────────────────
+
+BASH_COMPLETION = '''
+_knuspr_completion() {
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="login logout status setup search product favorites rette cart slots slot delivery orders order account frequent meals completion"
+    local cart_cmds="show add remove open"
+    local slot_cmds="reserve status cancel"
+    local favorites_cmds="list add remove"
+
+    # Get the main command and subcommand
+    local cmd="" subcmd=""
+    for ((i=1; i < cword; i++)); do
+        if [[ "${words[i]}" != -* ]]; then
+            if [[ -z "$cmd" ]]; then
+                cmd="${words[i]}"
+            elif [[ -z "$subcmd" ]]; then
+                subcmd="${words[i]}"
+                break
+            fi
+        fi
+    done
+
+    # Complete options if current word starts with -
+    if [[ "${cur}" == -* ]]; then
+        case "$cmd" in
+            search) COMPREPLY=($(compgen -W "--limit -n --favorites --expiring --rette --json --help" -- "${cur}")) ;;
+            product) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+            favorites) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+            rette) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+            cart)
+                case "$subcmd" in
+                    show) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+                    add) COMPREPLY=($(compgen -W "--quantity -q --json --help" -- "${cur}")) ;;
+                    remove) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+                    *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
+                esac ;;
+            slots) COMPREPLY=($(compgen -W "--detailed --json --help" -- "${cur}")) ;;
+            slot) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+            orders) COMPREPLY=($(compgen -W "--limit -n --json --help" -- "${cur}")) ;;
+            order) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+            account) COMPREPLY=($(compgen -W "--json --help" -- "${cur}")) ;;
+            frequent) COMPREPLY=($(compgen -W "--limit -n --json --help" -- "${cur}")) ;;
+            meals) COMPREPLY=($(compgen -W "--count -c --orders -o --json --help" -- "${cur}")) ;;
+            login) COMPREPLY=($(compgen -W "--email -e --password -p --help" -- "${cur}")) ;;
+            setup) COMPREPLY=($(compgen -W "--reset --help" -- "${cur}")) ;;
+            *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
+        esac
+        return
+    fi
+
+    # Complete commands and subcommands
+    case "${cword}" in
+        1)
+            COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
+            ;;
+        *)
+            if [[ -z "$subcmd" ]]; then
+                case "$cmd" in
+                    cart) COMPREPLY=($(compgen -W "${cart_cmds}" -- "${cur}")) ;;
+                    slot) COMPREPLY=($(compgen -W "${slot_cmds}" -- "${cur}")) ;;
+                    favorites) COMPREPLY=($(compgen -W "${favorites_cmds}" -- "${cur}")) ;;
+                    completion) COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}")) ;;
+                    meals) COMPREPLY=($(compgen -W "breakfast lunch dinner snack baking drinks healthy" -- "${cur}")) ;;
+                esac
+            fi
+            ;;
+    esac
+}
+
+complete -F _knuspr_completion knuspr
+'''
+
+ZSH_COMPLETION = '''
+#compdef knuspr
+
+_knuspr() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \\
+        '1: :->command' \\
+        '*:: :->args'
+
+    case "$state" in
+        command)
+            local -a commands
+            commands=(
+                'login:Bei Knuspr.de einloggen'
+                'logout:Ausloggen'
+                'status:Login-Status anzeigen'
+                'setup:Präferenzen einrichten'
+                'search:Produkte suchen'
+                'product:Produktdetails anzeigen'
+                'favorites:Favoriten verwalten'
+                'rette:Rette-Lebensmittel anzeigen'
+                'cart:Warenkorb verwalten'
+                'slots:Lieferzeitfenster anzeigen'
+                'slot:Slot reservieren/verwalten'
+                'delivery:Lieferinfos anzeigen'
+                'orders:Bestellhistorie anzeigen'
+                'order:Bestelldetails anzeigen'
+                'account:Account-Info anzeigen'
+                'frequent:Häufig gekaufte Produkte'
+                'meals:Mahlzeitvorschläge'
+                'completion:Shell-Completion ausgeben'
+            )
+            _describe 'command' commands
+            ;;
+        args)
+            case "$line[1]" in
+                cart)
+                    _arguments -C '1: :->cart_cmd' '*:: :->cart_args'
+                    case "$state" in
+                        cart_cmd)
+                            local -a cart_cmds
+                            cart_cmds=(
+                                'show:Warenkorb anzeigen'
+                                'add:Produkt hinzufügen'
+                                'remove:Produkt entfernen'
+                                'open:Im Browser öffnen'
+                            )
+                            _describe 'cart command' cart_cmds
+                            ;;
+                        cart_args)
+                            case "$line[1]" in
+                                add) _arguments '1:product_id' '--quantity[Menge]:quantity' '-q[Menge]:quantity' '--json[JSON-Ausgabe]' ;;
+                                remove) _arguments '1:product_id' '--json[JSON-Ausgabe]' ;;
+                                show) _arguments '--json[JSON-Ausgabe]' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                slot)
+                    _arguments -C '1: :->slot_cmd' '*:: :->slot_args'
+                    case "$state" in
+                        slot_cmd)
+                            local -a slot_cmds
+                            slot_cmds=(
+                                'reserve:Slot reservieren'
+                                'status:Reservierung anzeigen'
+                                'cancel:Reservierung stornieren'
+                            )
+                            _describe 'slot command' slot_cmds
+                            ;;
+                        slot_args)
+                            case "$line[1]" in
+                                reserve) _arguments '1:slot_id' '--json[JSON-Ausgabe]' ;;
+                                *) _arguments '--json[JSON-Ausgabe]' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                favorites)
+                    _arguments -C '1: :->fav_cmd' '*:: :->fav_args'
+                    case "$state" in
+                        fav_cmd)
+                            local -a fav_cmds
+                            fav_cmds=(
+                                'list:Favoriten anzeigen'
+                                'add:Zu Favoriten hinzufügen'
+                                'remove:Aus Favoriten entfernen'
+                            )
+                            _describe 'favorites command' fav_cmds
+                            ;;
+                        fav_args)
+                            case "$line[1]" in
+                                add|remove) _arguments '1:product_id' '--json[JSON-Ausgabe]' ;;
+                                list) _arguments '--json[JSON-Ausgabe]' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                search)
+                    _arguments '1:query' '--limit[Anzahl]:limit' '-n[Anzahl]:limit' '--favorites[Nur Favoriten]' '--expiring[Rette-Lebensmittel]' '--rette[Rette-Lebensmittel]' '--json[JSON-Ausgabe]'
+                    ;;
+                product)
+                    _arguments '1:product_id' '--json[JSON-Ausgabe]'
+                    ;;
+                rette)
+                    _arguments '1:filter' '--json[JSON-Ausgabe]'
+                    ;;
+                slots)
+                    _arguments '--detailed[Mit Slot-IDs]' '--json[JSON-Ausgabe]'
+                    ;;
+                orders)
+                    _arguments '--limit[Anzahl]:limit' '-n[Anzahl]:limit' '--json[JSON-Ausgabe]'
+                    ;;
+                order)
+                    _arguments '1:order_id' '--json[JSON-Ausgabe]'
+                    ;;
+                frequent)
+                    _arguments '--limit[Anzahl]:limit' '-n[Anzahl]:limit' '--json[JSON-Ausgabe]'
+                    ;;
+                meals)
+                    _arguments '1:meal_type:(breakfast lunch dinner snack baking drinks healthy)' '--count[Anzahl]:count' '-c[Anzahl]:count' '--orders[Bestellungen]:orders' '-o[Bestellungen]:orders' '--json[JSON-Ausgabe]'
+                    ;;
+                login)
+                    _arguments '--email[E-Mail]:email' '-e[E-Mail]:email' '--password[Passwort]:password' '-p[Passwort]:password'
+                    ;;
+                setup)
+                    _arguments '--reset[Zurücksetzen]'
+                    ;;
+                completion)
+                    _arguments '1:shell:(bash zsh fish)'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+compdef _knuspr knuspr
+'''
+
+FISH_COMPLETION = '''
+# knuspr completions for fish
+
+set -l commands login logout status setup search product favorites rette cart slots slot delivery orders order account frequent meals completion
+set -l cart_cmds show add remove open
+set -l slot_cmds reserve status cancel
+set -l favorites_cmds list add remove
+
+complete -c knuspr -f
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "login" -d "Bei Knuspr.de einloggen"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "logout" -d "Ausloggen"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Login-Status"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "setup" -d "Präferenzen einrichten"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Produkte suchen"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "product" -d "Produktdetails"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "favorites" -d "Favoriten verwalten"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "rette" -d "Rette-Lebensmittel"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "cart" -d "Warenkorb"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "slots" -d "Lieferzeitfenster"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "slot" -d "Slot reservieren"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "delivery" -d "Lieferinfos"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "orders" -d "Bestellhistorie"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "order" -d "Bestelldetails"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "account" -d "Account-Info"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "frequent" -d "Häufig gekauft"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "meals" -d "Mahlzeitvorschläge"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "completion" -d "Shell-Completion"
+
+# cart subcommands
+complete -c knuspr -n "__fish_seen_subcommand_from cart; and not __fish_seen_subcommand_from $cart_cmds" -a "show" -d "Anzeigen"
+complete -c knuspr -n "__fish_seen_subcommand_from cart; and not __fish_seen_subcommand_from $cart_cmds" -a "add" -d "Hinzufügen"
+complete -c knuspr -n "__fish_seen_subcommand_from cart; and not __fish_seen_subcommand_from $cart_cmds" -a "remove" -d "Entfernen"
+complete -c knuspr -n "__fish_seen_subcommand_from cart; and not __fish_seen_subcommand_from $cart_cmds" -a "open" -d "Im Browser öffnen"
+complete -c knuspr -n "__fish_seen_subcommand_from cart; and __fish_seen_subcommand_from add" -l quantity -s q -d "Menge"
+
+# slot subcommands
+complete -c knuspr -n "__fish_seen_subcommand_from slot; and not __fish_seen_subcommand_from $slot_cmds" -a "reserve" -d "Reservieren"
+complete -c knuspr -n "__fish_seen_subcommand_from slot; and not __fish_seen_subcommand_from $slot_cmds" -a "status" -d "Status anzeigen"
+complete -c knuspr -n "__fish_seen_subcommand_from slot; and not __fish_seen_subcommand_from $slot_cmds" -a "cancel" -d "Stornieren"
+
+# favorites subcommands
+complete -c knuspr -n "__fish_seen_subcommand_from favorites; and not __fish_seen_subcommand_from $favorites_cmds" -a "list" -d "Anzeigen"
+complete -c knuspr -n "__fish_seen_subcommand_from favorites; and not __fish_seen_subcommand_from $favorites_cmds" -a "add" -d "Hinzufügen"
+complete -c knuspr -n "__fish_seen_subcommand_from favorites; and not __fish_seen_subcommand_from $favorites_cmds" -a "remove" -d "Entfernen"
+
+# search options
+complete -c knuspr -n "__fish_seen_subcommand_from search" -l limit -s n -d "Anzahl Ergebnisse"
+complete -c knuspr -n "__fish_seen_subcommand_from search" -l favorites -d "Nur Favoriten"
+complete -c knuspr -n "__fish_seen_subcommand_from search" -l expiring -d "Rette-Lebensmittel"
+complete -c knuspr -n "__fish_seen_subcommand_from search" -l rette -d "Rette-Lebensmittel"
+complete -c knuspr -n "__fish_seen_subcommand_from search" -l json -d "JSON-Ausgabe"
+
+# slots options
+complete -c knuspr -n "__fish_seen_subcommand_from slots" -l detailed -d "Mit Slot-IDs"
+complete -c knuspr -n "__fish_seen_subcommand_from slots" -l json -d "JSON-Ausgabe"
+
+# orders options
+complete -c knuspr -n "__fish_seen_subcommand_from orders" -l limit -s n -d "Anzahl"
+complete -c knuspr -n "__fish_seen_subcommand_from orders" -l json -d "JSON-Ausgabe"
+
+# frequent options
+complete -c knuspr -n "__fish_seen_subcommand_from frequent" -l limit -s n -d "Anzahl"
+complete -c knuspr -n "__fish_seen_subcommand_from frequent" -l json -d "JSON-Ausgabe"
+
+# meals options
+complete -c knuspr -n "__fish_seen_subcommand_from meals" -a "breakfast lunch dinner snack baking drinks healthy" -d "Mahlzeittyp"
+complete -c knuspr -n "__fish_seen_subcommand_from meals" -l count -s c -d "Anzahl"
+complete -c knuspr -n "__fish_seen_subcommand_from meals" -l orders -s o -d "Bestellungen"
+complete -c knuspr -n "__fish_seen_subcommand_from meals" -l json -d "JSON-Ausgabe"
+
+# login options
+complete -c knuspr -n "__fish_seen_subcommand_from login" -l email -s e -d "E-Mail"
+complete -c knuspr -n "__fish_seen_subcommand_from login" -l password -s p -d "Passwort"
+
+# setup options
+complete -c knuspr -n "__fish_seen_subcommand_from setup" -l reset -d "Zurücksetzen"
+
+# completion
+complete -c knuspr -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d "Shell"
+'''
+
+
+def cmd_completion(args) -> int:
+    """Output shell completion script."""
+    shell = args.shell
+    
+    if shell == "bash":
+        print(BASH_COMPLETION.strip())
+    elif shell == "zsh":
+        print(ZSH_COMPLETION.strip())
+    elif shell == "fish":
+        print(FISH_COMPLETION.strip())
+    else:
+        print(f"❌ Unbekannte Shell: {shell}")
+        print("   Unterstützt: bash, zsh, fish")
+        return 1
+    
+    return 0
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -3130,6 +3448,11 @@ def main() -> int:
     favorites_remove_parser.add_argument("product_id", help="Produkt-ID")
     favorites_remove_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     favorites_remove_parser.set_defaults(func=cmd_favorites_remove)
+    
+    # completion command
+    completion_parser = subparsers.add_parser("completion", help="Shell-Completion ausgeben")
+    completion_parser.add_argument("shell", choices=["bash", "zsh", "fish"], help="Shell (bash, zsh, fish)")
+    completion_parser.set_defaults(func=cmd_completion)
     
     # Parse and execute
     args = parser.parse_args()
