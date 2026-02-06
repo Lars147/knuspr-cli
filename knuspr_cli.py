@@ -39,9 +39,6 @@ SESSION_FILE = Path.home() / ".knuspr_session.json"
 CREDENTIALS_FILE = Path.home() / ".knuspr_credentials.json"
 CONFIG_FILE = Path.home() / ".knuspr_config.json"
 
-# Also check workspace secrets
-WORKSPACE_CREDENTIALS = Path(__file__).parent.parent / "secrets" / "knuspr.env"
-
 # Meal category mappings (German categories for Knuspr.de)
 MEAL_CATEGORY_MAPPINGS = {
     "breakfast": [
@@ -914,19 +911,7 @@ def load_credentials() -> tuple[Optional[str], Optional[str]]:
     if email and password:
         return email, password
     
-    # 2. Check workspace secrets (knuspr.env)
-    if WORKSPACE_CREDENTIALS.exists():
-        with open(WORKSPACE_CREDENTIALS) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("KNUSPR_EMAIL="):
-                    email = line.split("=", 1)[1].strip().strip('"\'')
-                elif line.startswith("KNUSPR_PASSWORD="):
-                    password = line.split("=", 1)[1].strip().strip('"\'')
-        if email and password:
-            return email, password
-    
-    # 3. Check ~/.knuspr_credentials.json
+    # 2. Check ~/.knuspr_credentials.json
     if CREDENTIALS_FILE.exists():
         try:
             with open(CREDENTIALS_FILE) as f:
