@@ -28,6 +28,8 @@
 
 Schnell (keine langsamen Web-Apps), hackbar (pipe Produkte in andere Tools, automatisiere deinen Einkauf), und läuft überall mit zero dependencies — nur Python Standard Library.
 
+> ⚠️ **Disclaimer:** Dies ist ein Hobby-Projekt für die persönliche Nutzung. Nicht offiziell mit Knuspr.de verbunden oder von Knuspr.de unterstützt.
+
 ---
 
 ## 🚀 Quick Start
