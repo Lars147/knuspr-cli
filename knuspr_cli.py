@@ -847,10 +847,10 @@ class KnusprAPI:
     # ==================== FAVORITES API METHODS ====================
     
     def get_favorites(self) -> list[dict[str, Any]]:
-        """Get all favorite products.
+        """Get all favorite products using the native favorites endpoint.
         
-        Since there's no direct endpoint to list favorites, we search through
-        multiple common search terms and filter products marked as favorites.
+        Uses /api/v1/categories/favorite/products to get all favorite IDs,
+        then fetches product details for each.
         
         Returns:
             List of favorite products with details
@@ -858,56 +858,41 @@ class KnusprAPI:
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
         
-        # Search terms: common German letters for broad coverage
-        # With pagination (limit 500, max 1000 per term) = ~8-16 API calls
-        search_terms = ["e", "a", "n", "i"]
+        # Get all favorite product IDs
+        response = self._make_request("/api/v1/categories/favorite/products?limit=500")
+        product_ids = response.get("productIds", [])
         
-        all_favorites: dict[int, dict] = {}
+        if not product_ids:
+            return []
         
-        for term in search_terms:
-            offset = 0
-            limit = 500  # API accepts up to ~500
-            max_offset = 1000  # Don't go too deep per term (balance speed vs coverage)
-            
-            while offset < max_offset:
-                try:
-                    params = urllib.parse.urlencode({
-                        "search": term,
-                        "offset": str(offset),
-                        "limit": str(limit),
-                        "companyId": "1",
-                        "filterData": json.dumps({"filters": []}),
-                        "canCorrect": "true"
-                    })
-                    
-                    response = self._make_request(f"/services/frontend-service/search-metadata?{params}")
-                    products = response.get("data", {}).get("productList", [])
-                    
-                    for p in products:
-                        if p.get("favourite") and p.get("productId") not in all_favorites:
-                            price_info = p.get("price", {})
-                            all_favorites[p.get("productId")] = {
-                                "id": p.get("productId"),
-                                "name": p.get("productName"),
-                                "price": price_info.get("full"),
-                                "currency": price_info.get("currency", "EUR"),
-                                "unit_price": price_info.get("unitPrice"),
-                                "brand": p.get("brand"),
-                                "amount": p.get("textualAmount"),
-                                "in_stock": p.get("inStock", True),
-                                "image": p.get("image"),
-                            }
-                    
-                    # Stop if we got less than requested (end of results)
-                    if len(products) < limit:
-                        break
-                    
-                    offset += limit
-                except KnusprAPIError:
-                    break
+        # Fetch details for each product
+        favorites = []
+        for pid in product_ids:
+            try:
+                card = self._make_request(f"/api/v1/products/{pid}/card")
+                prices = card.get("prices", {})
+                stock = card.get("stock", {})
+                
+                # Use sale price if available, otherwise original price
+                price = prices.get("salePrice") or prices.get("originalPrice")
+                
+                favorites.append({
+                    "id": card.get("productId"),
+                    "name": card.get("name"),
+                    "price": price,
+                    "currency": prices.get("currency", "EUR"),
+                    "unit_price": prices.get("unitPrice"),
+                    "brand": card.get("brand"),
+                    "amount": card.get("textualAmount"),
+                    "in_stock": stock.get("availabilityStatus") == "AVAILABLE",
+                    "image": card.get("image", {}).get("path") if isinstance(card.get("image"), dict) else card.get("image"),
+                })
+            except KnusprAPIError:
+                # Skip products that can't be loaded (e.g., delisted)
+                continue
         
         # Sort by name
-        return sorted(all_favorites.values(), key=lambda p: p.get("name", "").lower())
+        return sorted(favorites, key=lambda p: (p.get("name") or "").lower())
     
     def add_favorite(self, product_id: int) -> dict[str, Any]:
         """Add a product to favorites.
