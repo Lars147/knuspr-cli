@@ -1497,7 +1497,7 @@ def cmd_account(args: argparse.Namespace) -> int:
             
             # Reusable Bags
             if bags:
-                count = bags.get("count") or bags.get("bagsCount") or 0
+                count = bags.get("current") or bags.get("count") or bags.get("bagsCount") or 0
                 saved_plastic = bags.get("savedPlastic") or bags.get("plasticSaved") or 0
                 
                 print(f"   ♻️  Mehrwegtaschen: {count}")
