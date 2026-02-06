@@ -50,6 +50,7 @@ uvx --from git+https://github.com/Lars147/knuspr-cli knuspr search "Milch"
 | 🔐 **Login** | Sichere Authentifizierung mit deinem Knuspr-Account |
 | 🔍 **Suche** | Produkte durchsuchen mit Filtern |
 | 📦 **Produkt** | Detaillierte Produktinformationen |
+| ⭐ **Favoriten** | Favoriten anzeigen, hinzufügen, entfernen |
 | 🥬 **Rette** | Alle **Rette Lebensmittel** (bald ablaufend, reduziert) |
 | 🛒 **Warenkorb** | Anzeigen, hinzufügen, entfernen |
 | 📦 **Lieferung** | Lieferzeitfenster, Slots, **Slot-Reservierung** |
@@ -223,6 +224,16 @@ Zeigt detaillierte Informationen zu einem Produkt:
 - Produkt-Story (wenn verfügbar)
 - Bilder-URLs
 
+### ⭐ Favoriten
+
+```bash
+knuspr favorites                        # Alle Favoriten anzeigen
+knuspr favorites list                   # Alle Favoriten anzeigen
+knuspr favorites list --json            # Als JSON
+knuspr favorites add 123456             # Produkt zu Favoriten hinzufügen
+knuspr favorites remove 123456          # Produkt aus Favoriten entfernen
+```
+
 ### 🛒 Warenkorb
 
 ```bash
@@ -348,7 +359,7 @@ Contributions are welcome!
 
 ### Ideas & TODOs
 
-- [ ] Favorites management
+- [x] ~~Favorites management~~ ✅
 - [x] ~~Order history~~ ✅
 - [x] ~~Delivery slots~~ ✅
 - [x] ~~Slot reservation~~ ✅

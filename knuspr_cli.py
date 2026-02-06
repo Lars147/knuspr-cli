@@ -785,6 +785,122 @@ class KnusprAPI:
         products.sort(key=expiry_sort)
         
         return products
+    
+    # ==================== FAVORITES API METHODS ====================
+    
+    def get_favorites(self) -> list[dict[str, Any]]:
+        """Get all favorite products.
+        
+        Since there's no direct endpoint to list favorites, we search through
+        multiple common search terms and filter products marked as favorites.
+        
+        Returns:
+            List of favorite products with details
+        """
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        # Search terms to cover most product categories
+        search_terms = [
+            "Milch", "Brot", "Käse", "Fleisch", "Gemüse", "Obst",
+            "Joghurt", "Butter", "Wurst", "Nudeln", "Reis", "Eier",
+            "Getränke", "Wasser", "Saft", "Kaffee", "Tee", "Müsli",
+            "Süß", "Chips", "Schokolade", "Bio", "Vegan", "a", "e", "i"
+        ]
+        
+        all_favorites: dict[int, dict] = {}
+        
+        for term in search_terms:
+            try:
+                params = urllib.parse.urlencode({
+                    "search": term,
+                    "offset": "0",
+                    "limit": "100",
+                    "companyId": "1",
+                    "filterData": json.dumps({"filters": []}),
+                    "canCorrect": "true"
+                })
+                
+                response = self._make_request(f"/services/frontend-service/search-metadata?{params}")
+                products = response.get("data", {}).get("productList", [])
+                
+                for p in products:
+                    if p.get("favourite") and p.get("productId") not in all_favorites:
+                        price_info = p.get("price", {})
+                        all_favorites[p.get("productId")] = {
+                            "id": p.get("productId"),
+                            "name": p.get("productName"),
+                            "price": price_info.get("full"),
+                            "currency": price_info.get("currency", "EUR"),
+                            "unit_price": price_info.get("unitPrice"),
+                            "brand": p.get("brand"),
+                            "amount": p.get("textualAmount"),
+                            "in_stock": p.get("inStock", True),
+                            "image": p.get("image"),
+                        }
+            except KnusprAPIError:
+                continue
+        
+        # Sort by name
+        return sorted(all_favorites.values(), key=lambda p: p.get("name", "").lower())
+    
+    def add_favorite(self, product_id: int) -> dict[str, Any]:
+        """Add a product to favorites.
+        
+        Args:
+            product_id: The product ID to add to favorites
+        
+        Returns:
+            Dict with productId and favourite status
+        """
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        payload = {
+            "productId": product_id,
+            "favourite": True
+        }
+        
+        response = self._make_request(
+            "/services/frontend-service/product/favourite",
+            method="POST",
+            data=payload
+        )
+        
+        data = response.get("data", {})
+        if not data.get("favourite"):
+            raise KnusprAPIError(f"Failed to add product {product_id} to favorites")
+        
+        return data
+    
+    def remove_favorite(self, product_id: int) -> dict[str, Any]:
+        """Remove a product from favorites.
+        
+        Args:
+            product_id: The product ID to remove from favorites
+        
+        Returns:
+            Dict with productId and favourite status
+        """
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr login' first.")
+        
+        payload = {
+            "productId": product_id,
+            "favourite": False
+        }
+        
+        response = self._make_request(
+            "/services/frontend-service/product/favourite",
+            method="POST",
+            data=payload
+        )
+        
+        data = response.get("data", {})
+        if data.get("favourite"):
+            raise KnusprAPIError(f"Failed to remove product {product_id} from favorites")
+        
+        return data
 
 
 def load_credentials() -> tuple[Optional[str], Optional[str]]:
@@ -2702,6 +2818,166 @@ def cmd_meals(args: argparse.Namespace) -> int:
         return 1
 
 
+# ==================== FAVORITES COMMANDS ====================
+
+def cmd_favorites_list(args: argparse.Namespace) -> int:
+    """Handle favorites list command - show all favorite products."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        if not args.json:
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  ⭐ FAVORITEN                                              ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            print("   → Lade Favoriten...")
+        
+        favorites = api.get_favorites()
+        
+        if args.json:
+            print(json.dumps(favorites, indent=2, ensure_ascii=False))
+        else:
+            print()
+            if not favorites:
+                print("   ℹ️  Keine Favoriten gefunden.")
+                print()
+                print("   💡 Tipp: Füge Favoriten hinzu mit 'knuspr favorites add <id>'")
+                print()
+                return 0
+            
+            print(f"   Gefunden: {len(favorites)} Favoriten")
+            print()
+            
+            for i, p in enumerate(favorites, 1):
+                stock = "✅" if p.get("in_stock", True) else "❌"
+                brand = f" ({p['brand']})" if p.get('brand') else ""
+                name = p.get('name', 'Unbekannt')
+                price = p.get('price', 0) or 0
+                currency = p.get('currency', 'EUR')
+                amount = p.get('amount', '?')
+                
+                print(f"  {i:2}. {name}{brand}")
+                print(f"      💰 {price:.2f} {currency}  │  📦 {amount}  │  {stock}")
+                print(f"      ID: {p['id']}")
+                print()
+        
+        return 0
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_favorites_add(args: argparse.Namespace) -> int:
+    """Handle favorites add command - add a product to favorites."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        product_id = int(args.product_id)
+        
+        if not args.json:
+            print()
+            print(f"  → Füge Produkt {product_id} zu Favoriten hinzu...")
+        
+        result = api.add_favorite(product_id)
+        
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print(f"✅ Produkt {product_id} zu Favoriten hinzugefügt!")
+            print()
+        
+        return 0
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Produkt-ID: {args.product_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Produkt-ID: {args.product_id}")
+            print()
+        return 1
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
+def cmd_favorites_remove(args: argparse.Namespace) -> int:
+    """Handle favorites remove command - remove a product from favorites."""
+    api = KnusprAPI()
+    
+    if not api.is_logged_in():
+        if args.json:
+            print(json.dumps({"error": "Nicht eingeloggt"}, indent=2))
+        else:
+            print()
+            print("❌ Nicht eingeloggt. Führe 'knuspr login' aus.")
+            print()
+        return 1
+    
+    try:
+        product_id = int(args.product_id)
+        
+        if not args.json:
+            print()
+            print(f"  → Entferne Produkt {product_id} aus Favoriten...")
+        
+        result = api.remove_favorite(product_id)
+        
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print(f"✅ Produkt {product_id} aus Favoriten entfernt!")
+            print()
+        
+        return 0
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Produkt-ID: {args.product_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Produkt-ID: {args.product_id}")
+            print()
+        return 1
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return 1
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -2847,6 +3123,29 @@ def main() -> int:
     meals_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     meals_parser.set_defaults(func=cmd_meals)
     
+    # ==================== FAVORITES COMMANDS ====================
+    
+    # favorites command
+    favorites_parser = subparsers.add_parser("favorites", help="Favoriten verwalten")
+    favorites_subparsers = favorites_parser.add_subparsers(dest="favorites_command", help="Favoriten-Befehle")
+    
+    # favorites list (default when no subcommand)
+    favorites_list_parser = favorites_subparsers.add_parser("list", help="Alle Favoriten anzeigen")
+    favorites_list_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    favorites_list_parser.set_defaults(func=cmd_favorites_list)
+    
+    # favorites add
+    favorites_add_parser = favorites_subparsers.add_parser("add", help="Produkt zu Favoriten hinzufügen")
+    favorites_add_parser.add_argument("product_id", help="Produkt-ID")
+    favorites_add_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    favorites_add_parser.set_defaults(func=cmd_favorites_add)
+    
+    # favorites remove
+    favorites_remove_parser = favorites_subparsers.add_parser("remove", help="Produkt aus Favoriten entfernen")
+    favorites_remove_parser.add_argument("product_id", help="Produkt-ID")
+    favorites_remove_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    favorites_remove_parser.set_defaults(func=cmd_favorites_remove)
+    
     # Parse and execute
     args = parser.parse_args()
     
@@ -2861,6 +3160,11 @@ def main() -> int:
     if args.command == "slot" and not args.slot_command:
         slot_parser.print_help()
         return 0
+    
+    if args.command == "favorites" and not args.favorites_command:
+        # Default to list when no subcommand
+        args.json = False
+        return cmd_favorites_list(args)
     
     return args.func(args)
 
