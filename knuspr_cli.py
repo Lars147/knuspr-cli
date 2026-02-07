@@ -254,13 +254,14 @@ class KnusprAPI:
         favorites_only: bool = False,
         expiring_only: bool = False,
         bio_only: bool = False,
+        on_sale: bool = False,
         sort_order: str = "relevance"
     ) -> list[dict[str, Any]]:
         """Search for products."""
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
         
-        needs_extra = expiring_only or bio_only
+        needs_extra = expiring_only or bio_only or on_sale
         request_limit = limit + 50 if needs_extra else limit + 5
         
         api_filters = []
@@ -312,6 +313,16 @@ class KnusprAPI:
                 )
             ]
         
+        # Filter on-sale products
+        if on_sale:
+            products = [
+                p for p in products
+                if any(
+                    s.get("active") and s.get("type") in ("sale", "week-sale")
+                    for s in p.get("sales", [])
+                )
+            ]
+        
         # Filter favorites
         if favorites_only:
             products = [p for p in products if p.get("favourite")]
@@ -330,6 +341,21 @@ class KnusprAPI:
                 if badge.get("position") == "PRICE":
                     discount_text = badge.get("text") or badge.get("label")
             
+            # Extract best active sale
+            best_sale = None
+            for s in p.get("sales", []):
+                if s.get("active"):
+                    sale_price = s.get("price", {}).get("full")
+                    orig = s.get("originalPrice", {}).get("full")
+                    if sale_price and (best_sale is None or sale_price < best_sale.get("sale_price", 999)):
+                        best_sale = {
+                            "type": s.get("type"),
+                            "sale_price": sale_price,
+                            "original_price": orig,
+                            "discount_percent": s.get("discountPercentage", 0),
+                            "ends_at": s.get("endsAt"),
+                        }
+            
             results.append({
                 "id": p.get("productId"),
                 "name": p.get("productName"),
@@ -342,6 +368,7 @@ class KnusprAPI:
                 "image": p.get("image"),
                 "expiry": expiry_text,
                 "discount": discount_text,
+                "sale": best_sale,
             })
         
         return results
@@ -1641,12 +1668,15 @@ def cmd_product_search(args: argparse.Namespace) -> int:
         if sort_order is None:
             sort_order = config.get("default_sort", "relevance")
         
+        on_sale = getattr(args, 'on_sale', False)
+        
         results = api.search_products(
             args.query,
             limit=args.limit,
             favorites_only=getattr(args, 'favorites', False),
             expiring_only=expiring_only,
             bio_only=prefer_bio,
+            on_sale=on_sale,
             sort_order=sort_order
         )
         
@@ -1697,10 +1727,19 @@ def cmd_product_search(args: argparse.Namespace) -> int:
                 expiry = p.get('expiry', '')
                 discount_str = f" {discount}" if discount else ""
                 
-                print(f"  {i:2}. {name}{brand}{bio_badge}{discount_str}")
+                sale = p.get('sale')
+                sale_str = ""
+                if sale:
+                    sale_str = f" 🏷️ -{sale['discount_percent']}%"
+                
+                print(f"  {i:2}. {name}{brand}{bio_badge}{discount_str}{sale_str}")
                 
                 if expiring_only and expiry:
                     print(f"      ⏰ {expiry}")
+                
+                if sale:
+                    ends = f" (bis {sale['ends_at'][:10]})" if sale.get('ends_at') else ""
+                    print(f"      🏷️ {sale['sale_price']:.2f} € statt {sale['original_price']:.2f} €{ends}")
                 
                 print(f"      💰 {p['price']} {p['currency']}  │  📦 {p['amount']}  │  {stock}")
                 print(f"      ID: {p['id']}")
@@ -4173,6 +4212,7 @@ def main() -> int:
     product_search.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Ergebnisse (Standard: 10)")
     product_search.add_argument("--favorites", action="store_true", help="Nur Favoriten anzeigen")
     product_search.add_argument("--rette", action="store_true", help="Nur Rette Lebensmittel")
+    product_search.add_argument("--on-sale", action="store_true", help="Nur Produkte im Angebot")
     product_search.add_argument("--bio", action="store_true", dest="bio", default=None, help="Nur Bio-Produkte")
     product_search.add_argument("--no-bio", action="store_false", dest="bio", help="Bio-Filter deaktivieren")
     product_search.add_argument("--sort", choices=["relevance", "price_asc", "unit_price_asc", "price_desc"], help="Sortierung")
