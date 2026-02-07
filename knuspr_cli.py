@@ -3805,7 +3805,7 @@ _knuspr_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="auth config account product favorite cart slot order insight delivery completion"
+    local commands="auth config account product favorite cart slot order insight delivery list deals completion"
     local auth_cmds="login logout status"
     local config_cmds="show set reset"
     local account_cmds="show"
@@ -3816,6 +3816,7 @@ _knuspr_completion() {
     local order_cmds="list show repeat"
     local insight_cmds="frequent meals"
     local delivery_cmds="show"
+    local list_cmds="show create delete rename add remove to-cart duplicate"
     local completion_cmds="bash zsh fish"
 
     local cmd="" subcmd=""
@@ -3852,6 +3853,7 @@ _knuspr_completion() {
                     order) COMPREPLY=($(compgen -W "${order_cmds}" -- "${cur}")) ;;
                     insight) COMPREPLY=($(compgen -W "${insight_cmds}" -- "${cur}")) ;;
                     delivery) COMPREPLY=($(compgen -W "${delivery_cmds}" -- "${cur}")) ;;
+                    list) COMPREPLY=($(compgen -W "${list_cmds}" -- "${cur}")) ;;
                     completion) COMPREPLY=($(compgen -W "${completion_cmds}" -- "${cur}")) ;;
                 esac
             fi
@@ -3887,6 +3889,8 @@ _knuspr() {
                 'order:Bestellungen (list|show|repeat)'
                 'insight:Einkaufs-Insights (frequent|meals)'
                 'delivery:Lieferinformationen anzeigen'
+                'list:Einkaufslisten (show|create|delete|rename|add|remove|to-cart|duplicate)'
+                'deals:Aktionen & Angebote anzeigen'
                 'completion:Shell-Completion ausgeben'
             )
             _describe 'command' commands
@@ -3943,6 +3947,14 @@ _knuspr() {
                     delivery_cmds=('show:Lieferinfo anzeigen')
                     _describe 'delivery command' delivery_cmds
                     ;;
+                list)
+                    local -a list_cmds
+                    list_cmds=('show:Listen/Produkte anzeigen' 'create:Neue Liste' 'delete:Liste löschen' 'rename:Umbenennen' 'add:Produkt hinzufügen' 'remove:Produkt entfernen' 'to-cart:Alle in Warenkorb' 'duplicate:Liste duplizieren')
+                    _describe 'list command' list_cmds
+                    ;;
+                deals)
+                    _arguments '--type[Aktionsart]:type:(week-sales premium-sales multipack sales favorite-sales)'
+                    ;;
                 completion)
                     _arguments '1:shell:(bash zsh fish)'
                     ;;
@@ -3957,7 +3969,7 @@ compdef _knuspr knuspr
 FISH_COMPLETION = '''
 # knuspr completions for fish
 
-set -l commands auth config account product favorite cart slot order insight delivery completion
+set -l commands auth config account product favorite cart slot order insight delivery list deals completion
 
 complete -c knuspr -f
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "auth" -d "Authentifizierung"
@@ -3970,6 +3982,8 @@ complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "slot" -d "
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "order" -d "Bestellungen"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "insight" -d "Einkaufs-Insights"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "delivery" -d "Lieferinfo"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "list" -d "Einkaufslisten"
+complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "deals" -d "Aktionen & Angebote"
 complete -c knuspr -n "not __fish_seen_subcommand_from $commands" -a "completion" -d "Shell-Completion"
 
 # auth subcommands
@@ -4023,6 +4037,19 @@ complete -c knuspr -n "__fish_seen_subcommand_from delivery" -a "show" -d "Anzei
 
 # completion
 complete -c knuspr -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d "Shell"
+
+# list subcommands
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "show" -d "Anzeigen"
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "create" -d "Neue Liste"
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "delete" -d "Löschen"
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "rename" -d "Umbenennen"
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "add" -d "Produkt hinzufügen"
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "remove" -d "Produkt entfernen"
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "to-cart" -d "Alle in Warenkorb"
+complete -c knuspr -n "__fish_seen_subcommand_from list" -a "duplicate" -d "Duplizieren"
+
+# deals options
+complete -c knuspr -n "__fish_seen_subcommand_from deals" -l type -s t -a "week-sales premium-sales multipack sales favorite-sales" -d "Aktionsart"
 
 # Global options
 complete -c knuspr -l json -d "JSON-Ausgabe"
