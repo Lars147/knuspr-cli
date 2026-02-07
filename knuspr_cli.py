@@ -1153,6 +1153,66 @@ class KnusprAPI:
             'section_titles': section_titles,
         }
 
+    def get_deal_section_products(self, category_type: str, category_id: Optional[int] = None) -> list[int]:
+        """Fetch ALL product IDs for a deal section via the pagination API.
+
+        Args:
+            category_type: e.g. 'week-sales', 'premium-sales', 'multipack', 'sales'
+            category_id: optional subcategory ID (for 'sales' type)
+
+        Returns:
+            List of product IDs.
+        """
+        if category_id is not None:
+            endpoint = f"/api/v1/categories/{category_type}/{category_id}/products?page=0&size=200&sort=recommended&filter="
+        else:
+            endpoint = f"/api/v1/categories/{category_type}/products?page=0&size=200&sort=recommended&filter="
+
+        try:
+            result = self._make_request(endpoint)
+        except KnusprAPIError:
+            return []
+
+        # API returns 'productsWithType' list of {id, type} objects
+        products_with_type = result.get('productsWithType', [])
+        if products_with_type:
+            return [p['id'] for p in products_with_type if p.get('type') == 'PRODUCT']
+
+        # Fallback to 'productIds' if present
+        return result.get('productIds', [])
+
+    def get_product_cards_bulk(self, product_ids: list[int], existing_cards: dict, category_type: str = 'sales') -> dict:
+        """Fetch product card info for IDs not already in existing_cards.
+
+        Args:
+            product_ids: list of product IDs to resolve
+            existing_cards: dict of productId -> card data already known
+            category_type: category type for the card API call
+
+        Returns:
+            Updated dict with all product cards (merged).
+        """
+        missing = [pid for pid in product_ids if pid not in existing_cards]
+        if not missing:
+            return existing_cards
+
+        result = dict(existing_cards)
+        BATCH_SIZE = 50
+
+        for i in range(0, len(missing), BATCH_SIZE):
+            batch = missing[i:i + BATCH_SIZE]
+            params = "&".join(f"products={pid}" for pid in batch)
+            try:
+                cards = self._make_request(f"/api/v1/products/card?{params}&categoryType={category_type}")
+                if isinstance(cards, list):
+                    for card in cards:
+                        if isinstance(card, dict) and 'productId' in card:
+                            result[card['productId']] = card
+            except KnusprAPIError:
+                continue
+
+        return result
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Utility Functions
@@ -3747,6 +3807,8 @@ def cmd_deals(args: argparse.Namespace) -> int:
 
     try:
         deal_type = getattr(args, 'type', None)
+        fetch_all = getattr(args, 'all', False)
+        limit = getattr(args, 'limit', None)
 
         if not args.json:
             print()
@@ -3758,6 +3820,29 @@ def cmd_deals(args: argparse.Namespace) -> int:
         deal_sections = deals['deal_sections']
         section_titles = deals['section_titles']
         total_hits = deals.get('total_hits', {})
+
+        # Determine which sections need full data via pagination API
+        sections_to_expand = []
+        for section_key in ['week-sales', 'premium-sales', 'multipack']:
+            if deal_type and deal_type != section_key:
+                continue
+            preview_count = len(deal_sections.get(section_key, []))
+            total = total_hits.get(section_key, preview_count)
+            needs_more = fetch_all or (limit and limit > preview_count and total > preview_count)
+            if needs_more and total > preview_count:
+                sections_to_expand.append(section_key)
+
+        # Fetch full product lists for sections that need it
+        for section_key in sections_to_expand:
+            if not args.json:
+                total = total_hits.get(section_key, 0)
+                title = section_titles.get(section_key, section_key)
+                print(f"  → Lade alle {total} Produkte für {title}...")
+            all_pids = api.get_deal_section_products(section_key)
+            if all_pids:
+                deal_sections[section_key] = all_pids
+                # Resolve product card details for new IDs
+                product_cards = api.get_product_cards_bulk(all_pids, product_cards, section_key)
 
         def format_product(pid):
             card = product_cards.get(pid, {})
@@ -3833,7 +3918,6 @@ def cmd_deals(args: argparse.Namespace) -> int:
             if not pids:
                 continue
             total = total_hits.get(section_key, len(pids))
-            limit = getattr(args, 'limit', None)
             display_pids = pids[:limit] if limit else pids
             shown = len(display_pids)
             loaded = len(pids)
@@ -4446,6 +4530,7 @@ def main() -> int:
     deals_parser.add_argument("--type", "-t", choices=["week-sales", "premium-sales", "multipack", "sales", "favorite-sales"],
                               help="Nur bestimmte Aktionsart anzeigen")
     deals_parser.add_argument("-n", "--limit", type=int, default=None, help="Anzahl Produkte pro Sektion (Standard: alle geladenen)")
+    deals_parser.add_argument("--all", action="store_true", help="Alle Produkte laden (nicht nur Vorschau)")
     deals_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     deals_parser.set_defaults(func=cmd_deals)
 
