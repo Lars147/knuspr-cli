@@ -3833,15 +3833,23 @@ def cmd_deals(args: argparse.Namespace) -> int:
             if not pids:
                 continue
             total = total_hits.get(section_key, len(pids))
-            shown = len(pids)
-            more_info = f" (zeige {shown} von {total})" if total > shown else ""
+            limit = getattr(args, 'limit', None)
+            display_pids = pids[:limit] if limit else pids
+            shown = len(display_pids)
+            loaded = len(pids)
+            if total > shown:
+                more_info = f" (zeige {shown} von {total})"
+            else:
+                more_info = ""
             print(f"   🔥 {title} ({total} Produkte){more_info}")
             print()
-            for i, pid in enumerate(pids, 1):
+            for i, pid in enumerate(display_pids, 1):
                 print(f"    {i:3}. {format_product(pid)}")
                 print()
             if total > shown:
-                print(f"      💡 {total - shown} weitere auf knuspr.de/{section_key}")
+                hint = f"knuspr product search '<begriff>' --on-sale" if total > loaded else f"knuspr deals --type {section_key}"
+                print(f"      💡 {total - shown} weitere – nutze '{hint}' für mehr")
+            
             print()
 
         # Show sales subcategories
@@ -4437,6 +4445,7 @@ def main() -> int:
     deals_parser = subparsers.add_parser("deals", help="Aktionen & Angebote anzeigen")
     deals_parser.add_argument("--type", "-t", choices=["week-sales", "premium-sales", "multipack", "sales", "favorite-sales"],
                               help="Nur bestimmte Aktionsart anzeigen")
+    deals_parser.add_argument("-n", "--limit", type=int, default=None, help="Anzahl Produkte pro Sektion (Standard: alle geladenen)")
     deals_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     deals_parser.set_defaults(func=cmd_deals)
 
