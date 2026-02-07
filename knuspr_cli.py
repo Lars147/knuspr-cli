@@ -700,21 +700,34 @@ class KnusprAPI:
         
         import re
         
-        RETTE_CATEGORIES = {
-            652: "Fleisch & Fisch",
-            532: "Kühlregal", 
-            663: "Wurst & Schinken",
-            480: "Brot & Gebäck",
-            2416: "Plant Based",
-            833: "Baby & Kinder",
-            4668: "Süßes & Salziges",
-            770: "Marks & Spencer",
-        }
-        
+        # Dynamically fetch categories from the Rette Lebensmittel page
+        categories: dict[int, str] = {}
         if category_id:
-            categories = {category_id: RETTE_CATEGORIES.get(category_id, "Unbekannt")}
+            categories = {category_id: "Unbekannt"}
         else:
-            categories = RETTE_CATEGORIES
+            try:
+                url = f"{BASE_URL}/rette-lebensmittel"
+                headers = self._get_headers()
+                headers["Accept"] = "text/html"
+                request = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    html = response.read().decode("utf-8")
+                
+                # Extract category IDs and names from page data
+                cat_matches = re.findall(r'"categoryId":(\d+),"name":"([^"]*)"', html)
+                for cid, cname in cat_matches:
+                    cname = cname.replace("\\u0026", "&")
+                    categories[int(cid)] = cname
+            except Exception:
+                pass
+            
+            if not categories:
+                # Fallback to known categories
+                categories = {
+                    652: "Fleisch & Fisch", 532: "Kühlregal", 663: "Wurst & Schinken",
+                    480: "Brot & Gebäck", 2416: "Plant Based", 29: "Kochen & Backen",
+                    833: "Baby & Kinder", 4668: "Süßes & Salziges", 4915: "Bistro",
+                }
         
         all_product_ids = set()
         
