@@ -229,13 +229,22 @@ class KnusprAPI:
         finally:
             self._clear_session()
     
+    # Mapping from CLI sort names to Knuspr API sortType values
+    SORT_TYPE_MAP = {
+        "relevance": "orderRecommended",
+        "price_asc": "orderPriceAsc",
+        "price_desc": "orderPriceDesc",
+        "unit_price_asc": "orderUnitPriceAsc",
+    }
+
     def search_products(
         self,
         query: str,
         limit: int = 10,
         favorites_only: bool = False,
         expiring_only: bool = False,
-        bio_only: bool = False
+        bio_only: bool = False,
+        sort_order: str = "relevance"
     ) -> list[dict[str, Any]]:
         """Search for products."""
         if not self.is_logged_in():
@@ -246,12 +255,17 @@ class KnusprAPI:
         
         api_filters = []
         
+        filter_data: dict[str, Any] = {"filters": api_filters}
+        sort_type = self.SORT_TYPE_MAP.get(sort_order)
+        if sort_type:
+            filter_data["sortType"] = sort_type
+        
         params = urllib.parse.urlencode({
             "search": query,
             "offset": "0",
             "limit": str(request_limit),
             "companyId": "1",
-            "filterData": json.dumps({"filters": api_filters}),
+            "filterData": json.dumps(filter_data),
             "canCorrect": "true"
         })
         
@@ -1388,21 +1402,22 @@ def cmd_product_search(args: argparse.Namespace) -> int:
         if prefer_bio is None:
             prefer_bio = config.get("prefer_bio", False)
         
+        sort_order = getattr(args, 'sort', None)
+        if sort_order is None:
+            sort_order = config.get("default_sort", "relevance")
+        
         results = api.search_products(
             args.query,
             limit=args.limit,
             favorites_only=getattr(args, 'favorites', False),
             expiring_only=expiring_only,
-            bio_only=prefer_bio
+            bio_only=prefer_bio,
+            sort_order=sort_order
         )
         
         exclusions = getattr(args, 'exclude', None)
         if exclusions is None:
             exclusions = config.get("exclusions", [])
-        
-        sort_order = getattr(args, 'sort', None)
-        if sort_order is None:
-            sort_order = config.get("default_sort", "relevance")
         
         if exclusions:
             original_count = len(results)
@@ -1417,13 +1432,6 @@ def cmd_product_search(args: argparse.Namespace) -> int:
             filtered_count = original_count - len(results)
             if filtered_count > 0 and not args.json:
                 print(f"   ({filtered_count} Produkte durch Ausschlüsse gefiltert)")
-        
-        if sort_order == "price_asc":
-            results.sort(key=lambda p: p.get("price") or float('inf'))
-        elif sort_order == "unit_price_asc":
-            results.sort(key=lambda p: p.get("unit_price") or p.get("price") or float('inf'))
-        elif sort_order == "price_desc":
-            results.sort(key=lambda p: p.get("price") or 0, reverse=True)
         
         if args.json:
             print(json.dumps(results, indent=2, ensure_ascii=False))
