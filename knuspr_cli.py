@@ -3792,6 +3792,17 @@ def cmd_deals(args: argparse.Namespace) -> int:
             if orig_price and orig_price > price:
                 orig_str = f" statt {orig_price:.2f} €"
 
+            # Check for badge info (e.g. multipack: "-15% ab 3 Stk.")
+            badge_str = ""
+            for badge in card.get('badges', []):
+                if badge.get('position') == 'PRICE' and badge.get('text'):
+                    badge_str = f" 🏷️ {badge['text']}"
+                    break
+
+            # Use badge if no discount found
+            if not discount_str and badge_str:
+                discount_str = badge_str
+
             return f"{parts[0]}\n       💰 {price_str}{orig_str}{discount_str}  │  📦 {amount}  │  ID: {pid}"
 
         if args.json:
@@ -3847,9 +3858,15 @@ def cmd_deals(args: argparse.Namespace) -> int:
                         print()
                 print()
 
-        total = sum(len(pids) for pids in deal_sections.values()) + sum(len(c['productIds']) for c in sales_categories)
-        print(f"   📊 Gesamt: {total} Produkte im Angebot")
-        print()
+        # Show total from actual hits, not just loaded previews
+        if deal_type:
+            # Single section filtered - don't show confusing total
+            pass
+        else:
+            total_real = sum(total_hits.get(k, len(deal_sections.get(k, []))) for k in section_titles)
+            total_cats = sum(total_hits.get(f'sales-{c["id"]}', len(c['productIds'])) for c in sales_categories)
+            print(f"   📊 Gesamt: {total_real + total_cats} Produkte im Angebot")
+            print()
 
         return EXIT_OK
     except KnusprAPIError as e:
