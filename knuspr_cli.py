@@ -20,6 +20,14 @@ Nutzung:
     knuspr delivery show              # Lieferinfo
     knuspr account show               # Account-Info
     knuspr favorite list              # Favoriten anzeigen
+    knuspr list show                  # Einkaufslisten anzeigen
+    knuspr list show 224328           # Produkte einer Liste
+    knuspr list create "Wocheneinkauf" # Neue Liste erstellen
+    knuspr list delete 224328         # Liste löschen
+    knuspr list rename 224328 "Neu"   # Liste umbenennen
+    knuspr list add 224328 3386       # Produkt zur Liste hinzufügen
+    knuspr list remove 224328 3386    # Produkt von Liste entfernen
+    knuspr list to-cart 224328        # Alle Produkte in den Warenkorb
 """
 
 import argparse
@@ -909,6 +917,83 @@ class KnusprAPI:
             raise KnusprAPIError(f"Failed to remove product {product_id} from favorites")
         
         return data
+
+    # ─── Shopping List API ───────────────────────────────────────────────
+
+    def get_shopping_lists(self) -> list[int]:
+        """Get all shopping list IDs."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        response = self._make_request('/api/v1/components/shopping-lists')
+        return response.get("shoppingLists", [])
+
+    def get_shopping_list(self, list_id: int) -> dict[str, Any]:
+        """Get shopping list details with products."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        return self._make_request(f'/api/v2/shopping-lists/id/{list_id}')
+
+    def create_shopping_list(self, name: str) -> dict[str, Any]:
+        """Create a new shopping list."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        return self._make_request('/api/v1/shopping-lists', method='POST', data={'name': name})
+
+    def delete_shopping_list(self, list_id: int) -> bool:
+        """Delete a shopping list."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        self._make_request(f'/api/v1/shopping-lists/id/{list_id}', method='DELETE')
+        return True
+
+    def rename_shopping_list(self, list_id: int, name: str) -> dict[str, Any]:
+        """Rename a shopping list."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        return self._make_request(f'/api/v2/shopping-lists/id/{list_id}', method='POST', data={'name': name})
+
+    def add_to_shopping_list(self, list_id: int, product_id: int, amount: int = 1) -> bool:
+        """Add/update product in shopping list. Amount is ADDED to existing."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        self._make_request(
+            f'/api/v1/shopping-lists/id/{list_id}/product/{product_id}/{amount}',
+            method='PUT',
+            data={'source': 'Shopping Lists'}
+        )
+        return True
+
+    def remove_from_shopping_list(self, list_id: int, product_id: int, amount: int = 0) -> bool:
+        """Remove product from shopping list. Amount 0 removes completely."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        self._make_request(
+            f'/api/v1/shopping-lists/id/{list_id}/product/{product_id}/{amount}',
+            method='PUT',
+            data={'source': 'Shopping Lists'}
+        )
+        return True
+
+    def shopping_list_to_cart(self, list_id: int) -> dict[str, Any]:
+        """Add all products from a shopping list to cart."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        list_data = self.get_shopping_list(list_id)
+        products = list_data.get('products', [])
+        if not products:
+            raise KnusprAPIError("Die Einkaufsliste ist leer.")
+        cart_products = []
+        for p in products:
+            if p.get('available', True):
+                cart_products.append({
+                    'productId': p['productId'],
+                    'quantity': p.get('amount', 1),
+                    'source': 'Shopping Lists'
+                })
+        if not cart_products:
+            raise KnusprAPIError("Keine verfügbaren Produkte in der Liste.")
+        response = self._make_request('/api/v1/shopping-lists/cart/all', method='POST', data={'products': cart_products})
+        return {"added_count": len(cart_products), "response": response}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3039,6 +3124,402 @@ def cmd_insight_meals(args: argparse.Namespace) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LIST (Shopping List) Commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cmd_list_show(args: argparse.Namespace) -> int:
+    """Handle list show command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        list_id = getattr(args, 'list_id', None)
+
+        if list_id is not None:
+            # Show a specific list with products
+            list_id = int(list_id)
+            list_data = api.get_shopping_list(list_id)
+
+            if args.json:
+                print(json.dumps(list_data, indent=2, ensure_ascii=False))
+                return EXIT_OK
+
+            name = list_data.get('name', 'Unbekannt')
+            list_type = list_data.get('type', '')
+            products = list_data.get('products', [])
+
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  📋 EINKAUFSLISTE                                          ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+            type_tag = " (auto)" if list_type == "AUTOMATIC" else ""
+            print(f"   📋 {name}{type_tag}")
+            print(f"   🆔 ID: {list_id}")
+            print(f"   📦 {len(products)} Produkte")
+            print()
+
+            if not products:
+                print("   (leer)")
+                print()
+                return EXIT_OK
+
+            # Resolve product names
+            for i, p in enumerate(products, 1):
+                pid = p.get('productId')
+                amount = p.get('amount', 1)
+                available = p.get('available', True)
+                stock = "✅" if available else "❌"
+
+                # Try to get product name
+                product_name = None
+                try:
+                    details = api.get_product_details(pid)
+                    product_name = details.get('name')
+                except KnusprAPIError:
+                    pass
+
+                if product_name:
+                    print(f"   {i:2}. {product_name}")
+                    print(f"       {amount}× | {stock} | ID: {pid}")
+                else:
+                    print(f"   {i:2}. Produkt {pid}")
+                    print(f"       {amount}× | {stock}")
+                print()
+
+        else:
+            # Show all lists
+            list_ids = api.get_shopping_lists()
+
+            if args.json:
+                all_lists = []
+                for lid in list_ids:
+                    try:
+                        detail = api.get_shopping_list(lid)
+                        all_lists.append(detail)
+                    except KnusprAPIError:
+                        all_lists.append({"id": lid, "error": True})
+                print(json.dumps(all_lists, indent=2, ensure_ascii=False))
+                return EXIT_OK
+
+            print()
+            print("╔═══════════════════════════════════════════════════════════╗")
+            print("║  📋 EINKAUFSLISTEN                                         ║")
+            print("╚═══════════════════════════════════════════════════════════╝")
+            print()
+
+            if not list_ids:
+                print("   ℹ️  Keine Einkaufslisten gefunden.")
+                print()
+                print("   💡 Tipp: Erstelle eine mit 'knuspr list create \"Meine Liste\"'")
+                print()
+                return EXIT_OK
+
+            for lid in list_ids:
+                try:
+                    detail = api.get_shopping_list(lid)
+                    name = detail.get('name', 'Unbekannt')
+                    list_type = detail.get('type', '')
+                    products = detail.get('products', [])
+                    type_tag = " (auto)" if list_type == "AUTOMATIC" else ""
+                    print(f"   📋 {name}{type_tag}")
+                    print(f"      {len(products)} Produkte | ID: {lid}")
+                    print()
+                except KnusprAPIError:
+                    print(f"   📋 Liste {lid}")
+                    print(f"      (Fehler beim Laden)")
+                    print()
+
+        return EXIT_OK
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": "Ungültige Listen-ID"}, indent=2))
+        else:
+            print()
+            print("❌ Ungültige Listen-ID")
+            print()
+        return EXIT_ERROR
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+def cmd_list_create(args: argparse.Namespace) -> int:
+    """Handle list create command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        if not args.json:
+            print()
+            print(f"  → Erstelle Liste '{args.name}'...")
+
+        result = api.create_shopping_list(args.name)
+
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            new_id = result.get('id', '?')
+            print()
+            print(f"✅ Liste '{args.name}' erstellt! (ID: {new_id})")
+            print()
+
+        return EXIT_OK
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+def cmd_list_delete(args: argparse.Namespace) -> int:
+    """Handle list delete command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        list_id = int(args.list_id)
+
+        if not getattr(args, 'yes', False) and not args.json:
+            # Confirm deletion
+            try:
+                detail = api.get_shopping_list(list_id)
+                name = detail.get('name', 'Unbekannt')
+                product_count = len(detail.get('products', []))
+                confirm = input(f"\n   ⚠️  Liste '{name}' ({product_count} Produkte) wirklich löschen? (ja/nein): ").strip().lower()
+            except KnusprAPIError:
+                confirm = input(f"\n   ⚠️  Liste {list_id} wirklich löschen? (ja/nein): ").strip().lower()
+
+            if confirm not in ('ja', 'j', 'yes', 'y'):
+                print()
+                print("   Abgebrochen.")
+                print()
+                return EXIT_OK
+
+        if not args.json:
+            print(f"  → Lösche Liste {list_id}...")
+
+        api.delete_shopping_list(list_id)
+
+        if args.json:
+            print(json.dumps({"status": "deleted", "list_id": list_id}, indent=2))
+        else:
+            print()
+            print(f"✅ Liste {list_id} gelöscht!")
+            print()
+
+        return EXIT_OK
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Listen-ID: {args.list_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Listen-ID: {args.list_id}")
+            print()
+        return EXIT_ERROR
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+def cmd_list_rename(args: argparse.Namespace) -> int:
+    """Handle list rename command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        list_id = int(args.list_id)
+
+        if not args.json:
+            print()
+            print(f"  → Benenne Liste {list_id} um zu '{args.name}'...")
+
+        result = api.rename_shopping_list(list_id, args.name)
+
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print(f"✅ Liste {list_id} umbenannt zu '{args.name}'!")
+            print()
+
+        return EXIT_OK
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Listen-ID: {args.list_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Listen-ID: {args.list_id}")
+            print()
+        return EXIT_ERROR
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+def cmd_list_add(args: argparse.Namespace) -> int:
+    """Handle list add command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        list_id = int(args.list_id)
+        product_id = int(args.product_id)
+        quantity = getattr(args, 'quantity', 1)
+
+        if not args.json:
+            print()
+            print(f"  → Füge Produkt {product_id} ({quantity}×) zu Liste {list_id} hinzu...")
+
+        api.add_to_shopping_list(list_id, product_id, quantity)
+
+        if args.json:
+            print(json.dumps({"status": "added", "list_id": list_id, "product_id": product_id, "quantity": quantity}, indent=2))
+        else:
+            print()
+            print(f"✅ Produkt {product_id} ({quantity}×) zu Liste {list_id} hinzugefügt!")
+            print()
+
+        return EXIT_OK
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": "Ungültige ID"}, indent=2))
+        else:
+            print()
+            print("❌ Ungültige Listen- oder Produkt-ID")
+            print()
+        return EXIT_ERROR
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+def cmd_list_remove(args: argparse.Namespace) -> int:
+    """Handle list remove command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        list_id = int(args.list_id)
+        product_id = int(args.product_id)
+        quantity = getattr(args, 'quantity', 0)
+
+        if not args.json:
+            print()
+            if quantity == 0:
+                print(f"  → Entferne Produkt {product_id} von Liste {list_id}...")
+            else:
+                print(f"  → Entferne {quantity}× Produkt {product_id} von Liste {list_id}...")
+
+        api.remove_from_shopping_list(list_id, product_id, quantity)
+
+        if args.json:
+            print(json.dumps({"status": "removed", "list_id": list_id, "product_id": product_id, "quantity": quantity}, indent=2))
+        else:
+            print()
+            print(f"✅ Produkt {product_id} von Liste {list_id} entfernt!")
+            print()
+
+        return EXIT_OK
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": "Ungültige ID"}, indent=2))
+        else:
+            print()
+            print("❌ Ungültige Listen- oder Produkt-ID")
+            print()
+        return EXIT_ERROR
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+def cmd_list_to_cart(args: argparse.Namespace) -> int:
+    """Handle list to-cart command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        list_id = int(args.list_id)
+
+        if not args.json:
+            print()
+            print(f"  → Füge alle Produkte aus Liste {list_id} zum Warenkorb hinzu...")
+
+        result = api.shopping_list_to_cart(list_id)
+
+        if args.json:
+            print(json.dumps({"status": "added_to_cart", "list_id": list_id, **result}, indent=2, ensure_ascii=False))
+        else:
+            added = result.get('added_count', 0)
+            print()
+            print(f"✅ {added} Produkte aus Liste {list_id} zum Warenkorb hinzugefügt!")
+            print()
+            print("   💡 Tipp: 'knuspr cart show' zeigt den Warenkorb an.")
+            print()
+
+        return EXIT_OK
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Listen-ID: {args.list_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Listen-ID: {args.list_id}")
+            print()
+        return EXIT_ERROR
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # COMPLETION Commands
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -3511,6 +3992,53 @@ def main() -> int:
     delivery_show.set_defaults(func=cmd_delivery_show)
     
     # ─────────────────────────────────────────────────────────────────────────
+    # LIST (Shopping Lists)
+    # ─────────────────────────────────────────────────────────────────────────
+    list_parser = subparsers.add_parser("list", help="Einkaufslisten (show|create|delete|rename|add|remove|to-cart)")
+    list_subparsers = list_parser.add_subparsers(dest="list_command", help="Listen-Befehle")
+    
+    list_show = list_subparsers.add_parser("show", help="Einkaufslisten anzeigen")
+    list_show.add_argument("list_id", nargs="?", default=None, help="Listen-ID (optional, zeigt alle wenn leer)")
+    list_show.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_show.set_defaults(func=cmd_list_show)
+    
+    list_create = list_subparsers.add_parser("create", help="Neue Einkaufsliste erstellen")
+    list_create.add_argument("name", help="Name der Liste")
+    list_create.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_create.set_defaults(func=cmd_list_create)
+    
+    list_delete = list_subparsers.add_parser("delete", help="Einkaufsliste löschen")
+    list_delete.add_argument("list_id", help="Listen-ID")
+    list_delete.add_argument("-y", "--yes", action="store_true", help="Ohne Bestätigung löschen")
+    list_delete.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_delete.set_defaults(func=cmd_list_delete)
+    
+    list_rename = list_subparsers.add_parser("rename", help="Einkaufsliste umbenennen")
+    list_rename.add_argument("list_id", help="Listen-ID")
+    list_rename.add_argument("name", help="Neuer Name")
+    list_rename.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_rename.set_defaults(func=cmd_list_rename)
+    
+    list_add = list_subparsers.add_parser("add", help="Produkt zur Liste hinzufügen")
+    list_add.add_argument("list_id", help="Listen-ID")
+    list_add.add_argument("product_id", help="Produkt-ID")
+    list_add.add_argument("-q", "--qty", "--quantity", type=int, default=1, dest="quantity", help="Menge (Standard: 1)")
+    list_add.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_add.set_defaults(func=cmd_list_add)
+    
+    list_remove = list_subparsers.add_parser("remove", help="Produkt von Liste entfernen")
+    list_remove.add_argument("list_id", help="Listen-ID")
+    list_remove.add_argument("product_id", help="Produkt-ID")
+    list_remove.add_argument("-q", "--qty", "--quantity", type=int, default=0, dest="quantity", help="Menge (Standard: 0 = komplett entfernen)")
+    list_remove.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_remove.set_defaults(func=cmd_list_remove)
+    
+    list_to_cart = list_subparsers.add_parser("to-cart", help="Alle Produkte in den Warenkorb")
+    list_to_cart.add_argument("list_id", help="Listen-ID")
+    list_to_cart.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_to_cart.set_defaults(func=cmd_list_to_cart)
+    
+    # ─────────────────────────────────────────────────────────────────────────
     # COMPLETION
     # ─────────────────────────────────────────────────────────────────────────
     completion_parser = subparsers.add_parser("completion", help="Shell-Completion ausgeben")
@@ -3584,6 +4112,12 @@ def main() -> int:
         # Default: delivery → delivery show
         args.json = False
         return cmd_delivery_show(args)
+    
+    if args.command == "list" and not getattr(args, 'list_command', None):
+        # Default: list → list show (all lists)
+        args.json = False
+        args.list_id = None
+        return cmd_list_show(args)
     
     if args.command == "completion" and not getattr(args, 'shell', None):
         completion_parser.print_help()
