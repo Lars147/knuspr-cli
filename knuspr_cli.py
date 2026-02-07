@@ -1056,10 +1056,11 @@ class KnusprAPI:
                     for page in data['pages']:
                         for card in page.get('cardsData', []):
                             product_cards[card['productId']] = card
-                            section_products.append(card['productId'])
-                        # Some pages only have productIds, not cardsData
-                        if not page.get('cardsData') and page.get('productIds'):
+                        # Always use productIds as the authoritative list
+                        if page.get('productIds'):
                             section_products.extend(page['productIds'])
+                        elif page.get('cardsData'):
+                            section_products.extend(c['productId'] for c in page['cardsData'])
                     deal_sections[cat_type] = section_products
 
             # Individual product card info
@@ -3701,10 +3702,15 @@ def cmd_deals(args: argparse.Namespace) -> int:
             card = product_cards.get(pid, {})
             name = card.get('name', f'Produkt {pid}')
             brand = card.get('brand', '')
-            price_data = card.get('price', {})
-            price = price_data.get('amount', 0) if isinstance(price_data, dict) else 0
-            orig_price_data = card.get('originalPrice', {})
-            orig_price = orig_price_data.get('amount', 0) if isinstance(orig_price_data, dict) else 0
+            # Prices can be in 'prices' (SSR) or 'price'/'originalPrice' (API)
+            prices = card.get('prices', {}) or {}
+            price = prices.get('salePrice') or prices.get('originalPrice', 0)
+            orig_price = prices.get('originalPrice', 0)
+            if not price:
+                price_data = card.get('price', {})
+                price = price_data.get('amount', 0) if isinstance(price_data, dict) else 0
+                orig_price_data = card.get('originalPrice', {})
+                orig_price = orig_price_data.get('amount', 0) if isinstance(orig_price_data, dict) else 0
             discount = card.get('percentageDiscount', 0)
             amount = card.get('textualAmount', '')
 
