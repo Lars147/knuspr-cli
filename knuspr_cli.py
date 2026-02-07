@@ -2186,8 +2186,6 @@ def cmd_slot_list(args: argparse.Namespace) -> int:
                     })
             if summary:
                 flat_slots = [s for s in flat_slots if s["type"] == "VIRTUAL"]
-            else:
-                flat_slots = [s for s in flat_slots if s["type"] != "VIRTUAL"]
             print(json.dumps(flat_slots, indent=2, ensure_ascii=False))
             return EXIT_OK
         
@@ -2209,9 +2207,7 @@ def cmd_slot_list(args: argparse.Namespace) -> int:
                 if not display_slots:
                     display_slots = slots[:12]
             else:
-                display_slots = sorted([s for s in slots if s.get("type") != "VIRTUAL"], key=lambda s: s.get("since", ""))
-                if not display_slots:
-                    display_slots = sorted(slots, key=lambda s: s.get("since", ""))
+                display_slots = sorted(slots, key=lambda s: (s.get("since", ""), 0 if s.get("type") == "VIRTUAL" else 1))
             
             for slot in display_slots:
                 time_window = slot.get("timeWindow", "")
@@ -2236,7 +2232,9 @@ def cmd_slot_list(args: argparse.Namespace) -> int:
                 price_str = "Kostenlos" if price == 0 else f"{price:.2f} €"
                 
                 slot_id = slot.get("slotId") or slot.get("id") or "?"
-                print(f"      🕐 {time_window:12} | 💰 {price_str:10} | {status:14} {eco}{premium} [ID: {slot_id}]")
+                slot_type = slot.get("type", "")
+                type_tag = "⏱️ " if slot_type == "VIRTUAL" else "  "
+                print(f"    {type_tag}🕐 {time_window:12} | 💰 {price_str:10} | {status:14} {eco}{premium} [ID: {slot_id}]")
             
             print()
         
@@ -2265,7 +2263,24 @@ def cmd_slot_reserve(args: argparse.Namespace) -> int:
     
     try:
         slot_id = int(args.slot_id)
+        
+        # Auto-detect slot type by looking up the slot in available slots
         slot_type = "ON_TIME"
+        try:
+            raw_slots = api.get_delivery_slots()
+            for response_item in raw_slots:
+                if isinstance(response_item, dict):
+                    for day in response_item.get("availabilityDays", []):
+                        if isinstance(day, dict):
+                            slots_by_hour = day.get("slots", {})
+                            if isinstance(slots_by_hour, dict):
+                                for hour_slots in slots_by_hour.values():
+                                    if isinstance(hour_slots, list):
+                                        for s in hour_slots:
+                                            if s.get("slotId") == slot_id:
+                                                slot_type = s.get("type", "ON_TIME")
+        except Exception:
+            pass  # Fall back to ON_TIME
         
         if not args.json:
             print()
