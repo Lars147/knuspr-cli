@@ -1955,14 +1955,14 @@ def cmd_cart_show(args: argparse.Namespace) -> int:
             print("─" * 60)
             print(f"   💰 Gesamt: {cart['total_price']:.2f} {cart['currency']}")
             
-            if cart['min_order_price'] and cart['total_price'] < cart['min_order_price']:
-                remaining = cart['min_order_price'] - cart['total_price']
-                print(f"   ⚠️  Mindestbestellwert: {cart['min_order_price']:.2f} € (noch {remaining:.2f} €)")
-            
             if cart['can_order']:
                 print("   ✅ Bestellbereit")
             else:
-                print("   ❌ Noch nicht bestellbar")
+                if cart['min_order_price'] and cart['total_price'] < cart['min_order_price']:
+                    remaining = cart['min_order_price'] - cart['total_price']
+                    print(f"   ❌ Mindestbestellwert nicht erreicht: {cart['min_order_price']:.2f} € (noch {remaining:.2f} € fehlen)")
+                else:
+                    print("   ❌ Noch nicht bestellbar (Mindestbestellwert nicht erreicht oder Slot fehlt)")
             print()
         
         return EXIT_OK
@@ -2129,10 +2129,6 @@ def cmd_slot_list(args: argparse.Namespace) -> int:
     try:
         raw_slots = api.get_delivery_slots()
         
-        if args.json:
-            print(json.dumps(raw_slots, indent=2, ensure_ascii=False))
-            return EXIT_OK
-        
         print()
         print("╔═══════════════════════════════════════════════════════════╗")
         print("║  📅 LIEFERZEITFENSTER                                      ║")
@@ -2162,14 +2158,42 @@ def cmd_slot_list(args: argparse.Namespace) -> int:
                             all_days.append({"date": date, "label": label, "slots": day_slots})
         
         if not all_days:
-            print("   ℹ️  Keine Lieferzeitfenster verfügbar.")
-            print()
+            if args.json:
+                print(json.dumps([], indent=2, ensure_ascii=False))
+            else:
+                print("   ℹ️  Keine Lieferzeitfenster verfügbar.")
+                print()
+            return EXIT_OK
+        
+        summary = getattr(args, 'summary', False)
+        
+        if args.json:
+            flat_slots = []
+            for day_info in all_days:
+                for slot in day_info["slots"]:
+                    flat_slots.append({
+                        "date": day_info["date"],
+                        "slot_id": slot.get("slotId") or slot.get("id"),
+                        "type": slot.get("type"),
+                        "since": slot.get("since"),
+                        "till": slot.get("till"),
+                        "time_window": slot.get("timeWindow"),
+                        "price": slot.get("price", 0),
+                        "capacity": slot.get("capacity"),
+                        "capacity_percent": (slot.get("timeSlotCapacityDTO") or {}).get("totalFreeCapacityPercent"),
+                        "eco": slot.get("eco", False),
+                        "premium": slot.get("premium", False),
+                    })
+            if summary:
+                flat_slots = [s for s in flat_slots if s["type"] == "VIRTUAL"]
+            else:
+                flat_slots = [s for s in flat_slots if s["type"] != "VIRTUAL"]
+            print(json.dumps(flat_slots, indent=2, ensure_ascii=False))
             return EXIT_OK
         
         # Apply limit
         limit = getattr(args, 'limit', 5)
-        detailed = getattr(args, 'detailed', False)
-        max_days = limit if detailed else min(limit, 5)
+        max_days = limit if not summary else min(limit, 5)
         
         for day_info in all_days[:max_days]:
             date = day_info["date"]
@@ -2180,12 +2204,14 @@ def cmd_slot_list(args: argparse.Namespace) -> int:
             print(f"   📅 {date_display} ({date})")
             print()
             
-            if detailed:
-                display_slots = sorted(slots, key=lambda s: s.get("since", ""))
-            else:
+            if summary:
                 display_slots = [s for s in slots if s.get("type") == "VIRTUAL"]
                 if not display_slots:
                     display_slots = slots[:12]
+            else:
+                display_slots = sorted([s for s in slots if s.get("type") != "VIRTUAL"], key=lambda s: s.get("since", ""))
+                if not display_slots:
+                    display_slots = sorted(slots, key=lambda s: s.get("since", ""))
             
             for slot in display_slots:
                 time_window = slot.get("timeWindow", "")
@@ -2239,7 +2265,7 @@ def cmd_slot_reserve(args: argparse.Namespace) -> int:
     
     try:
         slot_id = int(args.slot_id)
-        slot_type = getattr(args, 'type', 'ON_TIME').upper()
+        slot_type = "ON_TIME"
         
         if not args.json:
             print()
@@ -2357,7 +2383,7 @@ def cmd_slot_current(args: argparse.Namespace) -> int:
             if not reservation or not is_active:
                 print("   ℹ️  Kein Zeitfenster reserviert.")
                 print()
-                print("   💡 Tipp: Nutze 'knuspr slot list --detailed' um verfügbare Zeitfenster zu sehen,")
+                print("   💡 Tipp: Nutze 'knuspr slot list' um verfügbare Zeitfenster zu sehen,")
                 print("           dann 'knuspr slot reserve <id>' zum Reservieren.")
                 print()
                 return EXIT_OK
@@ -3376,7 +3402,7 @@ def main() -> int:
     
     cart_add = cart_subparsers.add_parser("add", help="Produkt hinzufügen")
     cart_add.add_argument("product_id", help="Produkt-ID")
-    cart_add.add_argument("-q", "--quantity", type=int, default=1, help="Menge (Standard: 1)")
+    cart_add.add_argument("-q", "--qty", "--quantity", type=int, default=1, dest="quantity", help="Menge (Standard: 1)")
     cart_add.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     cart_add.set_defaults(func=cmd_cart_add)
     
@@ -3401,14 +3427,12 @@ def main() -> int:
     
     slot_list = slot_subparsers.add_parser("list", help="Verfügbare Zeitfenster anzeigen")
     slot_list.add_argument("-n", "--limit", type=int, default=5, help="Anzahl Tage (Standard: 5)")
-    slot_list.add_argument("--detailed", "-d", action="store_true", help="Zeige auch 15-Minuten Slots mit IDs")
+    slot_list.add_argument("--summary", "-s", action="store_true", help="Nur Stunden-Übersicht (ohne 15-min Details)")
     slot_list.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     slot_list.set_defaults(func=cmd_slot_list)
     
     slot_reserve = slot_subparsers.add_parser("reserve", help="Zeitfenster reservieren")
-    slot_reserve.add_argument("slot_id", help="Slot-ID (aus 'knuspr slot list --detailed')")
-    slot_reserve.add_argument("--type", "-t", choices=["ON_TIME", "VIRTUAL"], default="ON_TIME", 
-                              help="Slot-Typ: ON_TIME (15-min) oder VIRTUAL (1-Stunde)")
+    slot_reserve.add_argument("slot_id", help="Slot-ID (aus 'knuspr slot list')")
     slot_reserve.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     slot_reserve.set_defaults(func=cmd_slot_reserve)
     
@@ -3525,7 +3549,7 @@ def main() -> int:
         # Default: slot → slot list
         args.json = False
         args.limit = 5
-        args.detailed = False
+        args.summary = False
         return cmd_slot_list(args)
     
     if args.command == "order" and not getattr(args, 'order_command', None):
