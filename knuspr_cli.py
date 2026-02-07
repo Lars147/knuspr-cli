@@ -749,15 +749,21 @@ class KnusprAPI:
         if not all_product_ids:
             return []
         
+        # API has a limit per request, so batch product IDs
         product_ids = list(all_product_ids)
-        params = "&".join([f"products={pid}" for pid in product_ids])
+        BATCH_SIZE = 20
+        result = []
+        for i in range(0, len(product_ids), BATCH_SIZE):
+            batch = product_ids[i:i + BATCH_SIZE]
+            params = "&".join([f"products={pid}" for pid in batch])
+            try:
+                batch_result = self._make_request(f"/api/v1/products/card?{params}&categoryType=last-minute")
+                if isinstance(batch_result, list):
+                    result.extend(batch_result)
+            except KnusprAPIError:
+                continue
         
-        try:
-            result = self._make_request(f"/api/v1/products/card?{params}&categoryType=last-minute")
-        except KnusprAPIError:
-            return []
-        
-        if not isinstance(result, list):
+        if not result:
             return []
         
         products = []
@@ -1702,9 +1708,10 @@ def cmd_product_rette(args: argparse.Namespace) -> int:
                 or search_lower in (p.get("brand") or "").lower()
             ]
         
-        # Apply limit
-        limit = getattr(args, 'limit', 20)
-        products = products[:limit]
+        # Apply limit (default: show all for rette)
+        limit = getattr(args, 'limit', None)
+        if limit:
+            products = products[:limit]
         
         if args.json:
             print(json.dumps(products, indent=2, ensure_ascii=False))
@@ -3332,7 +3339,7 @@ def main() -> int:
     
     product_rette = product_subparsers.add_parser("rette", help="Rette Lebensmittel anzeigen")
     product_rette.add_argument("query", nargs="?", help="Optional: Suchbegriff zum Filtern")
-    product_rette.add_argument("-n", "--limit", type=int, default=20, help="Anzahl Ergebnisse (Standard: 20)")
+    product_rette.add_argument("-n", "--limit", type=int, default=None, help="Anzahl Ergebnisse (Standard: alle)")
     product_rette.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     product_rette.set_defaults(func=cmd_product_rette)
     
