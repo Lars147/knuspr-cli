@@ -28,6 +28,8 @@ Nutzung:
     knuspr list add 224328 3386       # Produkt zur Liste hinzufügen
     knuspr list remove 224328 3386    # Produkt von Liste entfernen
     knuspr list to-cart 224328        # Alle Produkte in den Warenkorb
+    knuspr deals                      # Aktionen & Angebote
+    knuspr deals --type week-sales    # Nur Wochenangebote
 """
 
 import argparse
@@ -1000,6 +1002,107 @@ class KnusprAPI:
         if not self.is_logged_in():
             raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
         return self._make_request(f'/api/v1/shopping-lists/id/{list_id}/duplicate', method='POST', data={})
+
+    def get_deals(self) -> dict[str, Any]:
+        """Get current deals/sales from the Aktionen page via SSR."""
+        import re
+
+        headers = self._get_headers()
+        headers['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+
+        request = urllib.request.Request(f"{BASE_URL}/aktionen", headers=headers)
+        with urllib.request.urlopen(request, timeout=30) as response:
+            html = response.read().decode('utf-8')
+
+        match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+        if not match:
+            raise KnusprAPIError("Konnte Aktionen-Daten nicht laden.")
+
+        import json as _json
+        next_data = _json.loads(match.group(1))
+        queries = next_data.get('props', {}).get('initialProps', {}).get('pageProps', {}).get('dehydratedState', {}).get('queries', [])
+
+        # Build a lookup of all product card infos
+        product_cards = {}
+        categories_structure = {}
+        deal_sections = {}
+
+        for q in queries:
+            qh = str(q.get('queryHash', ''))
+            data = q.get('state', {}).get('data', None)
+            if data is None:
+                continue
+
+            # Root category structure (for sales subcategories)
+            if '"rootCategory"' in qh and '"sales"' in qh:
+                categories_structure = data
+
+            # Category-specific product cards (sales subcategories like Kühlregal, Brot etc)
+            elif '"categoryProductCards","sales"' in qh:
+                if isinstance(data, dict) and 'pages' in data:
+                    for page in data['pages']:
+                        for card in page.get('cardsData', []):
+                            product_cards[card['productId']] = card
+
+            # Preloaded root category cards (week-sales, premium-sales, multipack)
+            elif '"preloadedRootCategoryProductCards"' in qh:
+                cat_type = None
+                for t in ['week-sales', 'premium-sales', 'multipack', 'favorite-sales']:
+                    if f'"{t}"' in qh:
+                        cat_type = t
+                        break
+                if cat_type and isinstance(data, dict) and 'pages' in data:
+                    section_products = []
+                    for page in data['pages']:
+                        for card in page.get('cardsData', []):
+                            product_cards[card['productId']] = card
+                            section_products.append(card['productId'])
+                        # Some pages only have productIds, not cardsData
+                        if not page.get('cardsData') and page.get('productIds'):
+                            section_products.extend(page['productIds'])
+                    deal_sections[cat_type] = section_products
+
+            # Individual product card info
+            elif '"productCardInfo"' in qh:
+                if isinstance(data, dict) and 'productId' in data:
+                    product_cards[data['productId']] = data
+
+            # Bulk product card infos
+            elif '"productCardsInfosLoading"' in qh:
+                if isinstance(data, list):
+                    for card in data:
+                        if isinstance(card, dict) and 'productId' in card:
+                            product_cards[card['productId']] = card
+
+        # Build sales subcategories from structure
+        sales_categories = []
+        if categories_structure:
+            cats = categories_structure.get('categories', {})
+            structure = categories_structure.get('structure', [])
+            for cat_id in structure:
+                cat_id_str = str(cat_id)
+                if cat_id_str in cats:
+                    cat = cats[cat_id_str]
+                    sales_categories.append({
+                        'id': cat_id,
+                        'name': cat.get('name', '?'),
+                        'productIds': cat.get('productIds', [])
+                    })
+
+        # Section title mapping
+        section_titles = {
+            'week-sales': 'Wochenangebote',
+            'premium-sales': 'Premium Aktionen',
+            'multipack': 'Multipack Angebote',
+            'favorite-sales': 'Deine Favoriten im Angebot',
+        }
+
+        return {
+            'product_cards': product_cards,
+            'sales_categories': sales_categories,
+            'deal_sections': deal_sections,
+            'section_titles': section_titles,
+        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3571,6 +3674,123 @@ def cmd_list_duplicate(args: argparse.Namespace) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DEALS Commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cmd_deals(args: argparse.Namespace) -> int:
+    """Handle deals command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        deal_type = getattr(args, 'type', None)
+
+        if not args.json:
+            print()
+            print("  → Lade aktuelle Aktionen...")
+
+        deals = api.get_deals()
+        product_cards = deals['product_cards']
+        sales_categories = deals['sales_categories']
+        deal_sections = deals['deal_sections']
+        section_titles = deals['section_titles']
+
+        def format_product(pid):
+            card = product_cards.get(pid, {})
+            name = card.get('name', f'Produkt {pid}')
+            brand = card.get('brand', '')
+            price_data = card.get('price', {})
+            price = price_data.get('amount', 0) if isinstance(price_data, dict) else 0
+            orig_price_data = card.get('originalPrice', {})
+            orig_price = orig_price_data.get('amount', 0) if isinstance(orig_price_data, dict) else 0
+            discount = card.get('percentageDiscount', 0)
+            amount = card.get('textualAmount', '')
+
+            price_str = f"{price:.2f} €" if price else "?"
+
+            parts = [f"{name}"]
+            if brand:
+                parts[0] = f"{name} ({brand})"
+
+            discount_str = ""
+            if discount:
+                discount_str = f" 🏷️ -{discount}%"
+            elif orig_price and orig_price > price:
+                pct = int((1 - price/orig_price) * 100)
+                discount_str = f" 🏷️ -{pct}%"
+
+            orig_str = ""
+            if orig_price and orig_price > price:
+                orig_str = f" statt {orig_price:.2f} €"
+
+            return f"{parts[0]}\n       💰 {price_str}{orig_str}{discount_str}  │  📦 {amount}  │  ID: {pid}"
+
+        if args.json:
+            # Build JSON output
+            result = {}
+            if not deal_type or deal_type == 'sales':
+                result['sales'] = []
+                for cat in sales_categories:
+                    products = [product_cards.get(pid, {'productId': pid}) for pid in cat['productIds'] if pid in product_cards]
+                    result['sales'].append({'category': cat['name'], 'category_id': cat['id'], 'products': products})
+            for section_key, section_pids in deal_sections.items():
+                if not deal_type or deal_type == section_key:
+                    result[section_key] = [product_cards.get(pid, {'productId': pid}) for pid in section_pids if pid in product_cards]
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return EXIT_OK
+
+        print()
+        print("╔═══════════════════════════════════════════════════════════╗")
+        print("║  🏷️  AKTIONEN                                              ║")
+        print("╚═══════════════════════════════════════════════════════════╝")
+        print()
+
+        # Show deal sections (week-sales, premium-sales, multipack)
+        for section_key, title in section_titles.items():
+            if deal_type and deal_type != section_key:
+                continue
+            pids = deal_sections.get(section_key, [])
+            if not pids:
+                continue
+            print(f"   🔥 {title} ({len(pids)} Produkte)")
+            print()
+            for i, pid in enumerate(pids, 1):
+                print(f"    {i:3}. {format_product(pid)}")
+                print()
+            print()
+
+        # Show sales subcategories
+        if not deal_type or deal_type == 'sales':
+            for cat in sales_categories:
+                pids = cat['productIds']
+                if not pids:
+                    continue
+                print(f"   📂 {cat['name']} ({len(pids)} Produkte)")
+                print()
+                for i, pid in enumerate(pids, 1):
+                    if pid in product_cards:
+                        print(f"    {i:3}. {format_product(pid)}")
+                        print()
+                print()
+
+        total = sum(len(pids) for pids in deal_sections.values()) + sum(len(c['productIds']) for c in sales_categories)
+        print(f"   📊 Gesamt: {total} Produkte im Angebot")
+        print()
+
+        return EXIT_OK
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # COMPLETION Commands
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -4094,6 +4314,15 @@ def main() -> int:
     list_duplicate.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     list_duplicate.set_defaults(func=cmd_list_duplicate)
     
+    # ─────────────────────────────────────────────────────────────────────────
+    # DEALS
+    # ─────────────────────────────────────────────────────────────────────────
+    deals_parser = subparsers.add_parser("deals", help="Aktionen & Angebote anzeigen")
+    deals_parser.add_argument("--type", "-t", choices=["week-sales", "premium-sales", "multipack", "sales", "favorite-sales"],
+                              help="Nur bestimmte Aktionsart anzeigen")
+    deals_parser.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    deals_parser.set_defaults(func=cmd_deals)
+
     # ─────────────────────────────────────────────────────────────────────────
     # COMPLETION
     # ─────────────────────────────────────────────────────────────────────────
