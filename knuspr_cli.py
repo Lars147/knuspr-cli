@@ -995,6 +995,12 @@ class KnusprAPI:
         response = self._make_request('/api/v1/shopping-lists/cart/all', method='POST', data={'products': cart_products})
         return {"added_count": len(cart_products), "response": response}
 
+    def duplicate_shopping_list(self, list_id: int) -> dict[str, Any]:
+        """Duplicate a shopping list."""
+        if not self.is_logged_in():
+            raise KnusprAPIError("Not logged in. Run 'knuspr auth login' first.")
+        return self._make_request(f'/api/v1/shopping-lists/id/{list_id}/duplicate', method='POST', data={})
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Utility Functions
@@ -3519,6 +3525,51 @@ def cmd_list_to_cart(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
 
+def cmd_list_duplicate(args: argparse.Namespace) -> int:
+    """Handle list duplicate command."""
+    api = KnusprAPI()
+
+    if exit_code := check_auth(api, args.json):
+        return exit_code
+
+    try:
+        list_id = int(args.list_id)
+
+        if not args.json:
+            print()
+            print(f"  → Dupliziere Liste {list_id}...")
+
+        result = api.duplicate_shopping_list(list_id)
+        new_id = result.get('id', '?')
+        new_name = result.get('name', '?')
+
+        if args.json:
+            print(json.dumps({"status": "duplicated", "original_id": list_id, "new_id": new_id, "new_name": new_name}, indent=2, ensure_ascii=False))
+        else:
+            print()
+            print(f"✅ Liste dupliziert!")
+            print(f"   📋 {new_name} (ID: {new_id})")
+            print()
+
+        return EXIT_OK
+    except ValueError:
+        if args.json:
+            print(json.dumps({"error": f"Ungültige Listen-ID: {args.list_id}"}, indent=2))
+        else:
+            print()
+            print(f"❌ Ungültige Listen-ID: {args.list_id}")
+            print()
+        return EXIT_ERROR
+    except KnusprAPIError as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print()
+            print(f"❌ Fehler: {e}")
+            print()
+        return EXIT_ERROR
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPLETION Commands
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4037,6 +4088,11 @@ def main() -> int:
     list_to_cart.add_argument("list_id", help="Listen-ID")
     list_to_cart.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     list_to_cart.set_defaults(func=cmd_list_to_cart)
+    
+    list_duplicate = list_subparsers.add_parser("duplicate", help="Einkaufsliste duplizieren")
+    list_duplicate.add_argument("list_id", help="Listen-ID")
+    list_duplicate.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    list_duplicate.set_defaults(func=cmd_list_duplicate)
     
     # ─────────────────────────────────────────────────────────────────────────
     # COMPLETION
