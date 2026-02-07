@@ -1115,10 +1115,10 @@ def cmd_config_show(args: argparse.Namespace) -> int:
             print(f"   🌿 Bio bevorzugen:      {bio_status}")
             
             sort_names = {
-                "relevance": "Relevanz",
+                "relevance": "Empfohlen",
                 "price_asc": "Preis aufsteigend",
+                "unit_price_asc": "Preis pro Einheit aufsteigend",
                 "price_desc": "Preis absteigend",
-                "rating": "Bewertung"
             }
             sort_name = sort_names.get(config.get("default_sort", "relevance"), "Relevanz")
             print(f"   📊 Standard-Sortierung: {sort_name}")
@@ -1177,8 +1177,8 @@ def cmd_config_set(args: argparse.Namespace) -> int:
     print("   4. Bewertung (beste zuerst)")
     print()
     
-    sort_options = {"1": "relevance", "2": "price_asc", "3": "price_desc", "4": "rating"}
-    sort_names = {"relevance": "Relevanz", "price_asc": "Preis aufsteigend", "price_desc": "Preis absteigend", "rating": "Bewertung"}
+    sort_options = {"1": "relevance", "2": "price_asc", "3": "unit_price_asc", "4": "price_desc"}
+    sort_names = {"relevance": "Empfohlen", "price_asc": "Preis aufsteigend", "unit_price_asc": "Preis pro Einheit aufsteigend", "price_desc": "Preis absteigend"}
     
     current_sort = config.get("default_sort", "relevance")
     current_sort_num = next((k for k, v in sort_options.items() if v == current_sort), "1")
@@ -1420,6 +1420,8 @@ def cmd_product_search(args: argparse.Namespace) -> int:
         
         if sort_order == "price_asc":
             results.sort(key=lambda p: p.get("price") or float('inf'))
+        elif sort_order == "unit_price_asc":
+            results.sort(key=lambda p: p.get("unit_price") or p.get("price") or float('inf'))
         elif sort_order == "price_desc":
             results.sort(key=lambda p: p.get("price") or 0, reverse=True)
         
@@ -3292,7 +3294,7 @@ def main() -> int:
     product_search.add_argument("--rette", action="store_true", help="Nur Rette Lebensmittel")
     product_search.add_argument("--bio", action="store_true", dest="bio", default=None, help="Nur Bio-Produkte")
     product_search.add_argument("--no-bio", action="store_false", dest="bio", help="Bio-Filter deaktivieren")
-    product_search.add_argument("--sort", choices=["relevance", "price_asc", "price_desc", "rating"], help="Sortierung")
+    product_search.add_argument("--sort", choices=["relevance", "price_asc", "unit_price_asc", "price_desc"], help="Sortierung")
     product_search.add_argument("--exclude", nargs="*", help="Begriffe ausschließen")
     product_search.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     product_search.set_defaults(func=cmd_product_search)
