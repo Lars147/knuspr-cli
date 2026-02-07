@@ -1026,6 +1026,7 @@ class KnusprAPI:
         product_cards = {}
         categories_structure = {}
         deal_sections = {}
+        total_hits = {}  # categoryType -> total product count
 
         for q in queries:
             qh = str(q.get('queryHash', ''))
@@ -1062,6 +1063,25 @@ class KnusprAPI:
                         elif page.get('cardsData'):
                             section_products.extend(c['productId'] for c in page['cardsData'])
                     deal_sections[cat_type] = section_products
+
+            # Total hits per category type
+            elif 'rootCategoryProductsTotalHits' in qh:
+                if isinstance(data, dict):
+                    results = data.get('results', 0)
+                    for t in ['week-sales', 'premium-sales', 'multipack', 'favorite-sales']:
+                        if f'"{t}"' in qh:
+                            total_hits[t] = results
+                            break
+
+            # Category product total hits (sales subcategories)
+            elif 'categoryProductsTotalHits' in qh:
+                if isinstance(data, dict):
+                    results = data.get('results', 0)
+                    # Extract categoryId from queryHash
+                    import re as _re
+                    cid_match = _re.search(r'"categoryId":(\d+)', qh)
+                    if cid_match:
+                        total_hits[f'sales-{cid_match.group(1)}'] = results
 
             # Individual product card info
             elif '"productCardInfo"' in qh:
@@ -1102,6 +1122,7 @@ class KnusprAPI:
             'product_cards': product_cards,
             'sales_categories': sales_categories,
             'deal_sections': deal_sections,
+            'total_hits': total_hits,
             'section_titles': section_titles,
         }
 
@@ -3697,6 +3718,7 @@ def cmd_deals(args: argparse.Namespace) -> int:
         sales_categories = deals['sales_categories']
         deal_sections = deals['deal_sections']
         section_titles = deals['section_titles']
+        total_hits = deals.get('total_hits', {})
 
         def format_product(pid):
             card = product_cards.get(pid, {})
@@ -3760,11 +3782,16 @@ def cmd_deals(args: argparse.Namespace) -> int:
             pids = deal_sections.get(section_key, [])
             if not pids:
                 continue
-            print(f"   🔥 {title} ({len(pids)} Produkte)")
+            total = total_hits.get(section_key, len(pids))
+            shown = len(pids)
+            more_info = f" (zeige {shown} von {total})" if total > shown else ""
+            print(f"   🔥 {title} ({total} Produkte){more_info}")
             print()
             for i, pid in enumerate(pids, 1):
                 print(f"    {i:3}. {format_product(pid)}")
                 print()
+            if total > shown:
+                print(f"      💡 {total - shown} weitere auf knuspr.de/{section_key}")
             print()
 
         # Show sales subcategories
